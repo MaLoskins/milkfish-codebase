@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Python Codebase Visualizer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Python Codebase Visualizer</h1>
+    </header>
+    
+    <main>
+        <div class="container">
+            <div class="input-section">
+                <h2>Select Python Directory</h2>
+                <div class="file-input-container">
+                    <input type="file" id="directory-input" webkitdirectory directory multiple>
+                    <label for="directory-input">Choose Directory</label>
+                </div>
+                <div class="controls">
+                    <button id="analyze-btn" disabled>Analyze Codebase</button>
+                </div>
+                <div id="file-list-container">
+                    <h3>Selected Files:</h3>
+                    <ul id="file-list"></ul>
+                </div>
+            </div>
+            
+            <div class="visualization-section">
+                <h2>Codebase Visualization</h2>
+                <div class="visualization-controls">
+                    <div class="buttons">
+                        <button id="zoom-in">+</button>
+                        <button id="zoom-out">-</button>
+                        <button id="reset-view">⟲</button>
+                    </div>
+                </div>
+                <div id="visualization"></div>
+                
+                <!-- Graph Legend -->
+                <div class="graph-legend">
+                    <div class="legend-item">
+                        <div class="legend-color file-color"></div>
+                        <span>File</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color class-color"></div>
+                        <span>Class</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color function-color"></div>
+                        <span>Function</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color method-color"></div>
+                        <span>Method</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color import-color"></div>
+                        <span>Import</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color module-color"></div>
+                        <span>Module</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="details-panel">
+            <h2>Details</h2>
+            <div id="node-details">
+                <p>Click on a node to see details</p>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>Python Codebase Visualizer - Created with HTML, CSS, and JavaScript</p>
+    </footer>
+    
+    <script src="js/parser.js"></script>
+    <script src="js/graph.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
