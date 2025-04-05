@@ -1,14 +1,13 @@
-# Python Codebase Visualizer 🔍
+# Python Codebase Graph Visualizer 🔍
 
 [![GitHub](https://img.shields.io/badge/GitHub-Maloskins-181717?style=for-the-badge&logo=github)](https://github.com/Maloskins)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.6+-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6-yellow?style=for-the-badge&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 
 A sleek, lightweight visualization tool that transforms your Python codebase into an interactive network graph, revealing connections between files, classes, methods, and functions. Perfect for identifying "floating nodes" – forgotten or unrealized components in your projects.
 
-![Python Codebase Visualizer Demo](https://via.placeholder.com/800x400?text=Python+Codebase+Visualizer+Demo)
-
+![Python Codebase Graph Visualizer Demo](./examples/dashboard.png)
+![Python Codebase Graph Visualizer Selected Node Details](./examples/details.png)
 ## 🚀 Features
 
 - **Holistic Code Analysis**: See your entire codebase as an interconnected network
@@ -16,7 +15,6 @@ A sleek, lightweight visualization tool that transforms your Python codebase int
 - **Floating Node Detection**: Quickly identify unused or disconnected code
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Lightweight**: No heavy dependencies or frameworks
-- **Dark Mode UI**: Easy on the eyes for those late-night coding sessions
 
 ## 🔧 Installation & Usage
 
@@ -42,18 +40,12 @@ A sleek, lightweight visualization tool that transforms your Python codebase int
    - Or click "Load Sample Code" to see the visualizer in action with example files
    - Explore the generated graph, zoom in/out, and click on nodes to see detailed information
 
-## 🧠 The Story Behind
+### Purpose
 
-Developed by [Matthew Haskins](https://github.com/Maloskins) during a PyGame project to identify forgotten components of the game, this tool emerged from my research in Geometric Neural Networks. I needed a way to quality-check code from a more holistic perspective – seeing relationships that aren't immediately obvious when looking at individual files.
+Developed by [me](https://maloskins.pages.dev/cv) during a PyGame project to identify forgotten components of the game, this tool emerged from my research in Geometric Neural Networks, wondering why graph networks were not used diagnostically or as ubiquitously as I would have anticipated. I needed a way to quality-check code from a more holistic perspective, identifying seeing relationships that aren't immediately obvious when looking at individual files. 
 
-## 🤖 AI Development Tool
+I am aware similar tools exist but they are often convoluted and dont have magenta highlights in their application 🤡.
 
-This visualizer serves as an excellent tool for AI agents involved in code generation:
-
-- **Hallucination Prevention**: By visualizing the entire codebase, AI can verify that generated components connect properly to existing code
-- **Redundancy Detection**: Easily spot duplicate functionality or unused code that AI might generate
-- **Architecture Alignment**: Ensure AI-generated code follows the established project structure and patterns
-- **Verification**: Provides a feedback mechanism to verify that AI-generated code integrates as expected
 
 ## 💻 Technical Details
 
@@ -65,18 +57,20 @@ This visualizer serves as an excellent tool for AI agents involved in code gener
 
 ## 🤝 Contribute
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/Maloskins/python-codebase-visualizer/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/Maloskins/python-codebase-visualizer/issues) or contact [me](https://maloskins.pages.dev/cv) directly.
 
 ## ☕ Support My Work
 
-If you find this tool useful, consider buying me a coffee:
+If you find this tool useful, consider buying me a coffee (or a coke zero, Coke, sponsor me or something idk):
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/maloskins)
 
-## 📝 License
+I will be working on expanding the utility for different languages and allow it to automatically clone and scan repos. This shouldnt take to long as this application only took about an hour to make. I have many projects stored in private repos of a similar nature and will release these over the coming months as of 05/04/2025 (5th of April for you freedom unit peoples). Look forward to *MilkFish-AI* in the coming months (AI Agent tool that utilises knowledge graphs in a novel, more efficient way).
+
+
 
 This project is [MIT](LICENSE) licensed.
 
 ---
 
-Created with ❤️ by [Matthew Haskins](https://github.com/Maloskins)
+Created with AI and Stupidity by [Matthew Haskins](https://github.com/Maloskins)
