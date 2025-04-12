@@ -4,16 +4,21 @@
  */
 document.addEventListener('DOMContentLoaded', function() {
     // Elements
+    const fileInput = document.getElementById('file-input');
     const directoryInput = document.getElementById('directory-input');
     const analyzeBtn = document.getElementById('analyze-btn');
+    const clearSelectionBtn = document.getElementById('clear-selection-btn');
     const fileList = document.getElementById('file-list');
+    const pythonFileCount = document.getElementById('python-file-count');
     
     // Files storage
     let selectedFiles = [];
-    let allFiles = [];
+    let allFiles = new Map(); // Map to store files with their paths as keys
     let subdirectories = [];
     let selectedSubdirectories = [];
-    const MAX_FILE_COUNT = 200;
+    const MAX_FILE_COUNT = 300;
+    const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+    let totalFileSize = 0; // Track total size of selected files
     
     // Common directories to ignore
     const COMMON_IGNORE_DIRS = [
@@ -29,32 +34,60 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the graph visualizer
     graphVisualizer.initialize();
     
-    // Handle directory selection
-    directoryInput.addEventListener('change', function(e) {
-        // Store all files
-        allFiles = Array.from(e.target.files);
+    // Handle individual file selection
+    fileInput.addEventListener('change', function(e) {
+        const newFiles = Array.from(e.target.files);
         
-        // Get Python files
-        const pythonFiles = allFiles.filter(file => file.name.endsWith('.py'));
+        // Filter for Python files
+        const pythonFiles = newFiles.filter(file => file.name.endsWith('.py'));
         
         if (pythonFiles.length === 0) {
-            showNotification('No Python files found in the selected directory.', true);
-            analyzeBtn.disabled = true;
+            showNotification('No Python files selected. Please select .py files.', true);
             return;
         }
         
-        // Extract subdirectories
-        extractSubdirectories(allFiles);
+        // Add files to the collection
+        addFilesToCollection(pythonFiles);
+        
+        // Reset the file input
+        fileInput.value = '';
+    });
+    
+    // Handle directory selection
+    directoryInput.addEventListener('change', function(e) {
+        const newFiles = Array.from(e.target.files);
+        
+        // Get Python files
+        const pythonFiles = newFiles.filter(file => file.name.endsWith('.py'));
+        
+        if (pythonFiles.length === 0) {
+            showNotification('No Python files found in the selected directory.', true);
+            return;
+        }
+        
+        // Extract subdirectories from this selection
+        const dirFiles = [...newFiles]; // Create a copy for subdirectory extraction
+        extractSubdirectories(dirFiles);
         
         // If there are multiple subdirectories and more than MAX_FILE_COUNT files, show the subdirectory selection modal
         if (subdirectories.length > 1 && pythonFiles.length > MAX_FILE_COUNT) {
-            showSubdirectoryModal();
+            // Store the current files temporarily for the modal
+            const tempFiles = [...newFiles];
+            
+            // Show subdirectory selection modal with these files
+            showSubdirectoryModal(tempFiles);
         } else {
-            // If few files or only one subdirectory, use all files
-            selectedFiles = pythonFiles;
-            updateFileList();
-            analyzeBtn.disabled = false;
+            // If few files or only one subdirectory, add all Python files
+            addFilesToCollection(pythonFiles);
         }
+        
+        // Reset the directory input
+        directoryInput.value = '';
+    });
+    
+    // Handle clear selection button
+    clearSelectionBtn.addEventListener('click', function() {
+        clearFileSelection();
     });
     
     /**
@@ -81,8 +114,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Show the subdirectory selection modal
+     * @param {Array} tempFiles - Temporary array of files from the current directory selection
      */
-    function showSubdirectoryModal() {
+    function showSubdirectoryModal(tempFiles) {
         const modal = document.getElementById('subdirectory-modal');
         const subdirList = document.getElementById('subdirectory-list');
         const closeBtn = document.querySelector('.close-modal');
@@ -109,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
             label.textContent = dir;
             
             // Count Python files in this directory
-            const fileCount = countPythonFilesInDir(dir);
+            const fileCount = countPythonFilesInDir(dir, tempFiles);
             const countSpan = document.createElement('span');
             countSpan.className = 'file-count';
             countSpan.textContent = `(${fileCount} Python files)`;
@@ -121,14 +155,16 @@ document.addEventListener('DOMContentLoaded', function() {
             subdirList.appendChild(item);
             
             // Add change event to update file count
-            checkbox.addEventListener('change', updateSelectedFileCount);
+            checkbox.addEventListener('change', function() {
+                updateSelectedFileCount(tempFiles);
+            });
         });
         
         // Show the modal
         modal.style.display = 'block';
         
         // Update initial file count
-        updateSelectedFileCount();
+        updateSelectedFileCount(tempFiles);
         
         // Close modal when clicking the X
         closeBtn.onclick = function() {
@@ -138,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Handle ignore common directories button
         ignoreCommonBtn.onclick = function() {
             ignoreCommonDirectories();
-            updateSelectedFileCount();
+            updateSelectedFileCount(tempFiles);
         };
         
         // Handle confirm button
@@ -156,14 +192,14 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedSubdirectories = selectedDirs;
             
             // Filter files based on selected subdirectories
-            filterFilesBySubdirectories();
+            const filteredFiles = filterFilesBySubdirectories(tempFiles);
             
             // Check if file count is within limit
             const errorMsg = document.querySelector('.error-message') || document.createElement('div');
             errorMsg.className = 'error-message';
             
-            if (selectedFiles.length > MAX_FILE_COUNT) {
-                errorMsg.textContent = `Too many files selected (${selectedFiles.length}). Please select fewer subdirectories to stay under the limit of ${MAX_FILE_COUNT} files.`;
+            if (filteredFiles.length > MAX_FILE_COUNT) {
+                errorMsg.textContent = `Too many files selected (${filteredFiles.length}). Please select fewer subdirectories to stay under the limit of ${MAX_FILE_COUNT} files.`;
                 errorMsg.style.display = 'block';
                 
                 if (!document.querySelector('.error-message')) {
@@ -172,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 return; // Don't close modal
-            } else if (selectedFiles.length === 0) {
+            } else if (filteredFiles.length === 0) {
                 errorMsg.textContent = 'No Python files selected. Please select at least one subdirectory containing Python files.';
                 errorMsg.style.display = 'block';
                 
@@ -187,39 +223,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 errorMsg.style.display = 'none';
             }
             
+            // Add the filtered files to our collection
+            addFilesToCollection(filteredFiles);
+            
             // Close modal
             modal.style.display = 'none';
-            
-            // Update file list and enable analyze button
-            updateFileList();
-            analyzeBtn.disabled = false;
         };
         
         // Handle cancel button
         cancelBtn.onclick = function() {
-            // Reset directory input
-            directoryInput.value = '';
-            selectedFiles = [];
-            allFiles = [];
-            subdirectories = [];
-            selectedSubdirectories = [];
-            
-            // Close modal
+            // Close modal without adding files
             modal.style.display = 'none';
-            
-            // Update file list and disable analyze button
-            updateFileList();
-            analyzeBtn.disabled = true;
         };
     }
     
     /**
      * Count Python files in a specific directory
      * @param {string} dir - Directory name
+     * @param {Array} files - Array of files to count from
      * @returns {number} - Number of Python files
      */
-    function countPythonFilesInDir(dir) {
-        return allFiles.filter(file => {
+    function countPythonFilesInDir(dir, files) {
+        return files.filter(file => {
             const path = file.webkitRelativePath || file.name;
             return path.startsWith(dir + '/') && path.endsWith('.py');
         }).length;
@@ -227,8 +252,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Update the selected file count in the modal
+     * @param {Array} files - Array of files to count from
      */
-    function updateSelectedFileCount() {
+    function updateSelectedFileCount(files) {
         const selectedDirs = [];
         const checkboxes = document.querySelectorAll('#subdirectory-list input[type="checkbox"]');
         
@@ -239,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Count Python files in selected directories
-        const count = allFiles.filter(file => {
+        const count = files.filter(file => {
             const path = file.webkitRelativePath || file.name;
             const pathParts = path.split('/');
             
@@ -288,9 +314,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Filter files based on selected subdirectories
+     * @param {Array} files - Array of files to filter
+     * @returns {Array} - Filtered files
      */
-    function filterFilesBySubdirectories() {
-        selectedFiles = allFiles.filter(file => {
+    function filterFilesBySubdirectories(files) {
+        return files.filter(file => {
             const path = file.webkitRelativePath || file.name;
             const pathParts = path.split('/');
             
@@ -303,11 +331,270 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle analyze button click
     analyzeBtn.addEventListener('click', async function() {
         if (selectedFiles.length > 0) {
+            // Strictly enforce the file count limit
+            if (selectedFiles.length > MAX_FILE_COUNT) {
+                showNotification(`Error: Cannot analyze. The number of files (${selectedFiles.length}) exceeds the maximum limit of ${MAX_FILE_COUNT} files.`, true);
+                return;
+            }
+            
+            // Strictly enforce the file size limit
+            if (totalFileSize > MAX_TOTAL_SIZE) {
+                const totalSizeMB = (totalFileSize / (1024 * 1024)).toFixed(2);
+                const maxSizeMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(0);
+                showNotification(`Error: Cannot analyze. The total file size (${totalSizeMB}MB) exceeds the maximum limit of ${maxSizeMB}MB.`, true);
+                return;
+            }
+            
+            // Show loading notification
+            showNotification('Analyzing codebase, please wait...');
+            
             // Parse files and generate graph
             const graphData = await pythonParser.parseFiles(selectedFiles);
             graphVisualizer.update(graphData);
+            
+            // Show success notification
+            showNotification('Codebase analysis complete!');
         }
     });
+    
+    /**
+     * Update the file list display
+     */
+    /**
+     * Calculate the total size of files
+     * @param {Array} files - Array of file objects
+     * @returns {number} - Total size in bytes
+     */
+    function calculateTotalSize(files) {
+        return files.reduce((total, file) => total + file.size, 0);
+    }
+    
+    /**
+     * Normalize file paths to maintain hierarchical structure
+     * @param {string} path - Original file path
+     * @returns {Object} - Normalized path information
+     */
+    function normalizePath(path) {
+        // Split the path into parts
+        const parts = path.split('/');
+        const fileName = parts[parts.length - 1];
+        
+        // Handle different path formats
+        let dirPath = '';
+        let displayPath = '';
+        
+        if (parts.length > 1) {
+            // This is a path with directories
+            dirPath = parts.slice(0, -1).join('/');
+            
+            // Create a display path that shows the hierarchical structure
+            // For paths like "MILKFISH_VIBES/src/api_gateway/file.py"
+            // We want to show the full path structure
+            displayPath = dirPath;
+        } else {
+            // This is just a filename with no directory
+            dirPath = '.';
+            displayPath = 'Root';
+        }
+        
+        return {
+            originalPath: path,
+            dirPath: dirPath,
+            displayPath: displayPath,
+            fileName: fileName
+        };
+    }
+    
+    /**
+     * Find common path prefix among all files
+     * @returns {string} - Common path prefix
+     */
+    function findCommonPathPrefix() {
+        if (allFiles.size === 0) return '';
+        
+        // Get all paths
+        const paths = Array.from(allFiles.keys());
+        
+        // Find the shortest path to avoid index out of bounds
+        const shortestPath = paths.reduce((shortest, current) =>
+            current.length < shortest.length ? current : shortest, paths[0]);
+        
+        // Split paths into parts
+        const pathParts = paths.map(path => path.split('/'));
+        const shortestParts = shortestPath.split('/');
+        
+        // Find common prefix
+        let commonPrefix = [];
+        for (let i = 0; i < shortestParts.length - 1; i++) { // -1 to exclude filename
+            const part = shortestParts[i];
+            if (pathParts.every(parts => parts[i] === part)) {
+                commonPrefix.push(part);
+            } else {
+                break;
+            }
+        }
+        
+        return commonPrefix.join('/');
+    }
+    
+    /**
+     * Check if a file is a duplicate of an existing file
+     * @param {File} newFile - The new file to check
+     * @returns {string|null} - The path of the duplicate file if found, null otherwise
+     */
+    function findDuplicateFile(newFile) {
+        const newFileName = newFile.name;
+        const newFileSize = newFile.size;
+        
+        // First quick check: if there's no file with the same name and size, it's not a duplicate
+        let potentialDuplicate = null;
+        
+        for (const [path, existingFile] of allFiles.entries()) {
+            // Check if the file name matches
+            if (existingFile.name === newFileName && existingFile.size === newFileSize) {
+                potentialDuplicate = path;
+                break;
+            }
+        }
+        
+        return potentialDuplicate;
+    }
+    
+    /**
+     * Add files to the collection and update UI
+     * @param {Array} files - Array of file objects to add
+     */
+    function addFilesToCollection(files) {
+        // Check if adding these files would exceed the file count limit
+        const currentCount = selectedFiles.length;
+        
+        // Count unique files (excluding duplicates)
+        let uniqueFiles = 0;
+        let duplicateFiles = 0;
+        
+        // Pre-process files to identify duplicates
+        const filesToAdd = [];
+        const duplicatePaths = new Map();
+        
+        files.forEach(file => {
+            const duplicatePath = findDuplicateFile(file);
+            
+            if (duplicatePath) {
+                // This is a duplicate file
+                duplicateFiles++;
+                duplicatePaths.set(file, duplicatePath);
+            } else {
+                // This is a unique file
+                uniqueFiles++;
+                filesToAdd.push(file);
+            }
+        });
+        
+        const newCount = currentCount + uniqueFiles;
+        
+        if (newCount > MAX_FILE_COUNT) {
+            showNotification(`Error: Cannot add files. The total number of files (${newCount}) would exceed the limit of ${MAX_FILE_COUNT} files.`, true);
+            return;
+        }
+        
+        // Check if adding these files would exceed the size limit
+        const newFilesSize = calculateTotalSize(filesToAdd);
+        const newTotalSize = totalFileSize + newFilesSize;
+        
+        if (newTotalSize > MAX_TOTAL_SIZE) {
+            const currentSizeMB = (totalFileSize / (1024 * 1024)).toFixed(2);
+            const newSizeMB = (newFilesSize / (1024 * 1024)).toFixed(2);
+            const maxSizeMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(0);
+            
+            showNotification(`Error: Cannot add files. Current size: ${currentSizeMB}MB + New files: ${newSizeMB}MB would exceed the limit of ${maxSizeMB}MB.`, true);
+            return;
+        }
+        
+        // Add unique files to the collection with normalized paths
+        filesToAdd.forEach(file => {
+            const originalPath = file.webkitRelativePath || file.name;
+            
+            // Store the file with its original path
+            allFiles.set(originalPath, file);
+            
+            // Store normalized path information in the file object for later use
+            file.normalizedPath = normalizePath(originalPath);
+            
+            // Store the full path for duplicate detection
+            file.fullPath = originalPath;
+        });
+        
+        // Update total file size
+        totalFileSize = newTotalSize;
+        
+        // Update selected files array
+        selectedFiles = Array.from(allFiles.values()).filter(file => file.name.endsWith('.py'));
+        
+        // Update UI
+        updateFileList();
+        updateFileCount();
+        
+        // Enable/disable buttons based on selection
+        analyzeBtn.disabled = selectedFiles.length === 0;
+        clearSelectionBtn.disabled = selectedFiles.length === 0;
+        
+        // Show notification with duplicate information
+        if (duplicateFiles > 0) {
+            showNotification(`Added ${uniqueFiles} file(s) to selection. Skipped ${duplicateFiles} duplicate file(s).`);
+        } else {
+            showNotification(`Added ${uniqueFiles} file(s) to selection.`);
+        }
+    }
+    
+    /**
+     * Clear all selected files
+     */
+    function clearFileSelection() {
+        allFiles.clear();
+        selectedFiles = [];
+        totalFileSize = 0; // Reset total file size
+        updateFileList();
+        updateFileCount();
+        
+        // Disable buttons
+        analyzeBtn.disabled = true;
+        clearSelectionBtn.disabled = true;
+        
+        showNotification('File selection cleared.');
+    }
+    
+    /**
+     * Update the file count display
+     */
+    function updateFileCount() {
+        // Update file count display
+        pythonFileCount.textContent = selectedFiles.length;
+        
+        // Add file size information
+        const totalSizeMB = (totalFileSize / (1024 * 1024)).toFixed(2);
+        const maxSizeMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(0);
+        
+        // Update the file count element to include size information
+        const fileCountElement = document.querySelector('.file-count');
+        if (fileCountElement) {
+            fileCountElement.innerHTML = `<span>${selectedFiles.length}</span> Python files selected (<span>${totalSizeMB}</span>MB of ${maxSizeMB}MB)`;
+        }
+        
+        // Show warning if approaching limits
+        if (selectedFiles.length > MAX_FILE_COUNT * 0.8 || totalFileSize > MAX_TOTAL_SIZE * 0.8) {
+            let warningMessage = '';
+            
+            if (selectedFiles.length > MAX_FILE_COUNT * 0.8) {
+                warningMessage += `File count (${selectedFiles.length}) is approaching the limit of ${MAX_FILE_COUNT}. `;
+            }
+            
+            if (totalFileSize > MAX_TOTAL_SIZE * 0.8) {
+                warningMessage += `Total size (${totalSizeMB}MB) is approaching the limit of ${maxSizeMB}MB.`;
+            }
+            
+            showNotification(`Warning: ${warningMessage}`, true);
+        }
+    }
     
     /**
      * Update the file list display
@@ -322,21 +609,50 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Find common path prefix to improve directory structure display
+        const commonPrefix = findCommonPathPrefix();
+        
         // Group files by directory for better organization
         const filesByDir = {};
+        const directoryTree = {};
         
         selectedFiles.forEach(file => {
-            const path = file.webkitRelativePath || file.name;
-            const pathParts = path.split('/');
-            const dirPath = pathParts.slice(0, -1).join('/') || '.';
+            // Get the normalized path information
+            const pathInfo = file.normalizedPath || normalizePath(file.webkitRelativePath || file.name);
             
-            if (!filesByDir[dirPath]) {
-                filesByDir[dirPath] = [];
+            // Determine the display path, removing common prefix if it exists
+            let displayPath = pathInfo.dirPath;
+            if (commonPrefix && displayPath.startsWith(commonPrefix) && displayPath !== commonPrefix) {
+                // Remove common prefix and ensure it starts with the top-level directory
+                const topDir = commonPrefix.split('/')[0];
+                displayPath = topDir + displayPath.substring(commonPrefix.length);
             }
             
-            filesByDir[dirPath].push({
-                name: pathParts[pathParts.length - 1],
-                path: path
+            // Use the display path as the key for grouping
+            const dirKey = displayPath || '.';
+            
+            if (!filesByDir[dirKey]) {
+                filesByDir[dirKey] = [];
+                
+                // Build directory tree structure
+                if (dirKey !== '.' && dirKey.includes('/')) {
+                    const parts = dirKey.split('/');
+                    let currentLevel = directoryTree;
+                    
+                    parts.forEach(part => {
+                        if (!currentLevel[part]) {
+                            currentLevel[part] = {};
+                        }
+                        currentLevel = currentLevel[part];
+                    });
+                }
+            }
+            
+            filesByDir[dirKey].push({
+                name: pathInfo.fileName,
+                path: pathInfo.originalPath,
+                file: file,
+                displayPath: displayPath
             });
         });
         
@@ -346,8 +662,27 @@ document.addEventListener('DOMContentLoaded', function() {
             dirLi.className = 'directory';
             
             // Format the directory name
-            const dirName = dir === '.' ? 'Root' : dir;
-            dirLi.innerHTML = `<strong>${dirName}</strong> (${filesByDir[dir].length} files)`;
+            let dirName = dir === '.' ? 'Root' : dir;
+            
+            // Create directory header with remove button
+            const dirHeader = document.createElement('div');
+            dirHeader.className = 'directory-header';
+            
+            const dirTitle = document.createElement('span');
+            dirTitle.innerHTML = `<strong>${dirName}</strong> (${filesByDir[dir].length} files)`;
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-btn';
+            removeBtn.textContent = '×';
+            removeBtn.title = 'Remove all files in this directory';
+            removeBtn.addEventListener('click', function() {
+                removeDirectory(dir);
+            });
+            
+            dirHeader.appendChild(dirTitle);
+            dirHeader.appendChild(removeBtn);
+            dirLi.appendChild(dirHeader);
+            
             fileList.appendChild(dirLi);
             
             // Create a nested list for files
@@ -357,13 +692,119 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add each file
             filesByDir[dir].sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
                 const fileLi = document.createElement('li');
-                fileLi.textContent = file.name;
                 fileLi.className = 'file-item';
+                
+                // Create file item with remove button
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item-content';
+                
+                const fileName = document.createElement('span');
+                fileName.textContent = file.name;
+                
+                const removeFileBtn = document.createElement('button');
+                removeFileBtn.className = 'remove-btn small';
+                removeFileBtn.textContent = '×';
+                removeFileBtn.title = 'Remove this file';
+                removeFileBtn.addEventListener('click', function() {
+                    removeFile(file.path);
+                });
+                
+                fileItem.appendChild(fileName);
+                fileItem.appendChild(removeFileBtn);
+                fileLi.appendChild(fileItem);
+                
                 fileUl.appendChild(fileLi);
             });
             
             fileList.appendChild(fileUl);
         });
+    }
+    
+    /**
+     * Remove a file from the collection
+     * @param {string} path - Path of the file to remove
+     */
+    function removeFile(path) {
+        if (allFiles.has(path)) {
+            // Get the file size before removing
+            const file = allFiles.get(path);
+            const fileSize = file.size;
+            
+            // Remove the file
+            allFiles.delete(path);
+            
+            // Update total file size
+            totalFileSize -= fileSize;
+            
+            // Update selected files
+            selectedFiles = Array.from(allFiles.values()).filter(file => file.name.endsWith('.py'));
+            
+            // Update UI
+            updateFileList();
+            updateFileCount();
+            
+            // Enable/disable buttons
+            analyzeBtn.disabled = selectedFiles.length === 0;
+            clearSelectionBtn.disabled = selectedFiles.length === 0;
+            
+            showNotification('File removed from selection.');
+        }
+    }
+    
+    /**
+     * Remove all files in a directory
+     * @param {string} dirPath - Directory path
+     */
+    function removeDirectory(dirPath) {
+        // Get all files in this directory
+        const filesToRemove = [];
+        let sizeToRemove = 0;
+        
+        // Handle both normalized paths and original paths
+        allFiles.forEach((file, path) => {
+            // Check if the file has a normalized path
+            if (file.normalizedPath) {
+                // Use the normalized display path for comparison
+                const normalizedDirPath = file.normalizedPath.displayPath;
+                
+                // Check if this file belongs to the directory we're removing
+                if ((dirPath === '.' && normalizedDirPath === 'Root') ||
+                    (dirPath !== '.' && normalizedDirPath === dirPath)) {
+                    filesToRemove.push(path);
+                    sizeToRemove += file.size;
+                }
+            } else {
+                // Fall back to the original path splitting method
+                const pathParts = path.split('/');
+                const fileDirPath = pathParts.slice(0, -1).join('/') || '.';
+                
+                if (fileDirPath === dirPath) {
+                    filesToRemove.push(path);
+                    sizeToRemove += file.size;
+                }
+            }
+        });
+        
+        // Remove all files
+        filesToRemove.forEach(path => {
+            allFiles.delete(path);
+        });
+        
+        // Update total file size
+        totalFileSize -= sizeToRemove;
+        
+        // Update selected files
+        selectedFiles = Array.from(allFiles.values()).filter(file => file.name.endsWith('.py'));
+        
+        // Update UI
+        updateFileList();
+        updateFileCount();
+        
+        // Enable/disable buttons
+        analyzeBtn.disabled = selectedFiles.length === 0;
+        clearSelectionBtn.disabled = selectedFiles.length === 0;
+        
+        showNotification(`Removed ${filesToRemove.length} files (${(sizeToRemove / (1024 * 1024)).toFixed(2)}MB) from selection.`);
     }
     
     // Add demo functionality

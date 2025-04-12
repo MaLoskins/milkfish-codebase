@@ -19,10 +19,22 @@
     <main>
         <div class="container">
             <div class="input-section">
-                <h2>Select Python Directory</h2>
-                <div class="file-input-container">
-                    <input type="file" id="directory-input" webkitdirectory directory multiple>
-                    <label for="directory-input">Choose Directory</label>
+                <h2>Select Python Files</h2>
+                <div class="file-inputs">
+                    <div class="file-input-container">
+                        <input type="file" id="file-input" accept=".py" multiple>
+                        <label for="file-input">Select Files</label>
+                    </div>
+                    <div class="file-input-container">
+                        <input type="file" id="directory-input" webkitdirectory directory multiple>
+                        <label for="directory-input">Select Directory</label>
+                    </div>
+                </div>
+                <div class="selection-controls">
+                    <button id="clear-selection-btn" class="secondary-btn" disabled>Clear Selection</button>
+                    <div class="file-count">
+                        <span id="python-file-count">0</span> Python files selected (<span>0.00</span>MB of 15MB)
+                    </div>
                 </div>
                 <div class="controls">
                     <button id="analyze-btn" disabled>Analyze Codebase</button>

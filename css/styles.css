@@ -94,8 +94,14 @@ header h1 {
     border: 1px solid var(--border-color);
 }
 
+.file-inputs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
 .file-input-container {
-    margin-bottom: 20px;
+    flex: 1;
 }
 
 .file-input-container input[type="file"] {
@@ -103,18 +109,39 @@ header h1 {
 }
 
 .file-input-container label {
-    display: inline-block;
+    display: block;
     padding: 10px 15px;
     background-color: var(--magenta-primary);
     color: white;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.3s;
+    text-align: center;
 }
 
 .file-input-container label:hover {
     background-color: var(--magenta-secondary);
     transform: translateY(-2px);
+}
+
+.selection-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: var(--darker-bg);
+    border-radius: 4px;
+}
+
+.file-count {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.file-count span {
+    font-weight: bold;
+    color: var(--magenta-primary);
 }
 
 .controls {
@@ -142,6 +169,64 @@ header h1 {
 
 #file-list li:last-child {
     border-bottom: none;
+}
+
+.directory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-item-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.remove-btn {
+    background-color: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.remove-btn:hover {
+    background-color: var(--magenta-secondary);
+    color: white;
+    transform: none;
+}
+
+.remove-btn.small {
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+}
+
+.secondary-btn {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.secondary-btn:hover {
+    background-color: var(--highlight);
+    border-color: var(--magenta-secondary);
+}
+
+.secondary-btn:disabled {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
 }
 
 #file-list li.directory {

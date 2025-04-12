@@ -67,7 +67,7 @@ If you find this tool useful, consider buying me a coffee (or a coke zero, Coke,
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/maloskins)
 
-I will be working on expanding the utility for different languages and allow it to automatically clone and scan repos. This shouldnt take to long as this application only took about an hour to make. I have many projects stored in private repos of a similar nature and will release these over the coming months as of 05/04/2025 (5th of April for you freedom unit peoples). Look forward to *MilkFish-AI* in the coming months (AI Agent tool that utilises knowledge graphs in a novel, more efficient way).
+I will be working on expanding the utility for different languages and allow it to automatically clone and scan repos. I have been adding functionality and will be hosting this on CF soon.
 
 
 
