@@ -295,6 +295,60 @@ footer {
     border-top: 2px solid var(--magenta-primary);
 }
 
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.personal-branding {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.personal-branding p {
+    margin-bottom: 10px;
+}
+
+.personal-branding strong {
+    color: var(--text-color);
+}
+
+.social-links {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 10px;
+}
+
+.social-links a {
+    color: var(--magenta-primary);
+    text-decoration: none;
+    transition: color 0.3s, transform 0.2s;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.social-links a:hover {
+    color: white;
+    background-color: var(--magenta-secondary);
+    transform: translateY(-2px);
+}
+
+@media (max-width: 600px) {
+    .social-links {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .social-links a {
+        padding: 4px 8px;
+        font-size: 14px;
+    }
+}
+
 /* Graph Styles */
 .node {
     cursor: pointer;
