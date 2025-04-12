@@ -63,7 +63,7 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 
 ## ☕ Support My Work
 
-If you find this tool useful, consider buying me a coffee (or a coke zero, Coke, sponsor me or something idk):
+If you find this tool useful, consider buying me a coffee:
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/maloskins)
 
