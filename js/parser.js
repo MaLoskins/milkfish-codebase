@@ -8,6 +8,7 @@ class PythonParser {
         this.links = [];
         this.nodeMap = {};
         this.nodeIndex = 0;
+        this.pythonFiles = new Set(); // Track Python file names
     }
 
     /**
@@ -21,6 +22,16 @@ class PythonParser {
         this.links = [];
         this.nodeMap = {};
         this.nodeIndex = 0;
+        this.pythonFiles.clear();
+        
+        // First, collect all Python file names
+        for (const file of files) {
+            if (file.name.endsWith('.py')) {
+                // Store the file name without extension for module matching
+                const moduleName = file.name.replace('.py', '');
+                this.pythonFiles.add(moduleName);
+            }
+        }
         
         // Parse each Python file
         for (const file of files) {
@@ -103,8 +114,18 @@ class PythonParser {
                 const module = match[1].trim();
                 const imports = match[2].split(',').map(imp => imp.trim());
                 
-                // Create node for the from module
-                const moduleNode = this.createOrGetNode('module', module, module);
+                let moduleNode;
+                
+                // Check if this module corresponds to a Python file in the project
+                if (this.pythonFiles.has(module)) {
+                    // Use the file node instead of creating a module node
+                    const fileName = `${module}.py`;
+                    moduleNode = this.nodeMap[fileName] || this.createOrGetNode('file', fileName, fileName);
+                } else {
+                    // External module, create a module node as before
+                    moduleNode = this.createOrGetNode('module', module, module);
+                }
+                
                 this.createLink(fileNode.id, moduleNode.id);
                 
                 imports.forEach(imp => {

@@ -32,6 +32,37 @@
                 </div>
             </div>
             
+            <!-- Subdirectory Selection Modal -->
+            <div id="subdirectory-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Select Subdirectories to Include</h3>
+                        <span class="close-modal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="error-message" style="display: none;"></div>
+                        <p>Your selected directory contains multiple subdirectories. Please select which ones to include in the analysis:</p>
+                        <div id="subdirectory-list" class="checkbox-list">
+                            <!-- Subdirectories will be listed here dynamically -->
+                        </div>
+                        <div class="common-ignore-section">
+                            <h4>Common directories to ignore:</h4>
+                            <button id="ignore-common-btn" class="secondary-btn">Ignore Common Directories</button>
+                            <p class="hint-text">(.venv, node_modules, __pycache__, .git, etc.)</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div id="file-count-info">
+                            <span id="selected-file-count">0</span> Python files selected
+                        </div>
+                        <div class="modal-actions">
+                            <button id="cancel-subdirectory-btn" class="secondary-btn">Cancel</button>
+                            <button id="confirm-subdirectory-btn">Confirm Selection</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="visualization-section">
                 <h2>Codebase Visualization</h2>
                 <div class="visualization-controls">

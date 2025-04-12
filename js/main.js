@@ -10,20 +10,295 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Files storage
     let selectedFiles = [];
+    let allFiles = [];
+    let subdirectories = [];
+    let selectedSubdirectories = [];
+    const MAX_FILE_COUNT = 200;
+    
+    // Common directories to ignore
+    const COMMON_IGNORE_DIRS = [
+        '.venv', 'venv', 'env',
+        'node_modules',
+        '__pycache__',
+        '.git', '.github',
+        'build', 'dist',
+        '.idea', '.vscode',
+        'tests', 'test'
+    ];
     
     // Initialize the graph visualizer
     graphVisualizer.initialize();
     
     // Handle directory selection
     directoryInput.addEventListener('change', function(e) {
-        selectedFiles = Array.from(e.target.files).filter(file => file.name.endsWith('.py'));
+        // Store all files
+        allFiles = Array.from(e.target.files);
         
-        // Update the file list display
-        updateFileList();
+        // Get Python files
+        const pythonFiles = allFiles.filter(file => file.name.endsWith('.py'));
         
-        // Enable/disable analyze button based on file selection
-        analyzeBtn.disabled = selectedFiles.length === 0;
+        if (pythonFiles.length === 0) {
+            showNotification('No Python files found in the selected directory.', true);
+            analyzeBtn.disabled = true;
+            return;
+        }
+        
+        // Extract subdirectories
+        extractSubdirectories(allFiles);
+        
+        // If there are multiple subdirectories and more than MAX_FILE_COUNT files, show the subdirectory selection modal
+        if (subdirectories.length > 1 && pythonFiles.length > MAX_FILE_COUNT) {
+            showSubdirectoryModal();
+        } else {
+            // If few files or only one subdirectory, use all files
+            selectedFiles = pythonFiles;
+            updateFileList();
+            analyzeBtn.disabled = false;
+        }
     });
+    
+    /**
+     * Extract subdirectories from files
+     * @param {Array} files - Array of file objects
+     */
+    function extractSubdirectories(files) {
+        subdirectories = [];
+        const dirSet = new Set();
+        
+        files.forEach(file => {
+            const path = file.webkitRelativePath || file.name;
+            const pathParts = path.split('/');
+            
+            if (pathParts.length > 1) {
+                // Get top-level directory
+                dirSet.add(pathParts[0]);
+            }
+        });
+        
+        subdirectories = Array.from(dirSet).sort();
+        selectedSubdirectories = [...subdirectories]; // Initially select all
+    }
+    
+    /**
+     * Show the subdirectory selection modal
+     */
+    function showSubdirectoryModal() {
+        const modal = document.getElementById('subdirectory-modal');
+        const subdirList = document.getElementById('subdirectory-list');
+        const closeBtn = document.querySelector('.close-modal');
+        const confirmBtn = document.getElementById('confirm-subdirectory-btn');
+        const cancelBtn = document.getElementById('cancel-subdirectory-btn');
+        const ignoreCommonBtn = document.getElementById('ignore-common-btn');
+        
+        // Clear previous list
+        subdirList.innerHTML = '';
+        
+        // Add checkboxes for each subdirectory
+        subdirectories.forEach(dir => {
+            const item = document.createElement('div');
+            item.className = 'checkbox-item';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `dir-${dir}`;
+            checkbox.value = dir;
+            checkbox.checked = selectedSubdirectories.includes(dir);
+            
+            const label = document.createElement('label');
+            label.htmlFor = `dir-${dir}`;
+            label.textContent = dir;
+            
+            // Count Python files in this directory
+            const fileCount = countPythonFilesInDir(dir);
+            const countSpan = document.createElement('span');
+            countSpan.className = 'file-count';
+            countSpan.textContent = `(${fileCount} Python files)`;
+            label.appendChild(document.createTextNode(' '));
+            label.appendChild(countSpan);
+            
+            item.appendChild(checkbox);
+            item.appendChild(label);
+            subdirList.appendChild(item);
+            
+            // Add change event to update file count
+            checkbox.addEventListener('change', updateSelectedFileCount);
+        });
+        
+        // Show the modal
+        modal.style.display = 'block';
+        
+        // Update initial file count
+        updateSelectedFileCount();
+        
+        // Close modal when clicking the X
+        closeBtn.onclick = function() {
+            modal.style.display = 'none';
+        };
+        
+        // Handle ignore common directories button
+        ignoreCommonBtn.onclick = function() {
+            ignoreCommonDirectories();
+            updateSelectedFileCount();
+        };
+        
+        // Handle confirm button
+        confirmBtn.onclick = function() {
+            const selectedDirs = [];
+            const checkboxes = subdirList.querySelectorAll('input[type="checkbox"]');
+            
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    selectedDirs.push(checkbox.value);
+                }
+            });
+            
+            // Update selected subdirectories
+            selectedSubdirectories = selectedDirs;
+            
+            // Filter files based on selected subdirectories
+            filterFilesBySubdirectories();
+            
+            // Check if file count is within limit
+            const errorMsg = document.querySelector('.error-message') || document.createElement('div');
+            errorMsg.className = 'error-message';
+            
+            if (selectedFiles.length > MAX_FILE_COUNT) {
+                errorMsg.textContent = `Too many files selected (${selectedFiles.length}). Please select fewer subdirectories to stay under the limit of ${MAX_FILE_COUNT} files.`;
+                errorMsg.style.display = 'block';
+                
+                if (!document.querySelector('.error-message')) {
+                    const modalBody = document.querySelector('.modal-body');
+                    modalBody.insertBefore(errorMsg, modalBody.firstChild);
+                }
+                
+                return; // Don't close modal
+            } else if (selectedFiles.length === 0) {
+                errorMsg.textContent = 'No Python files selected. Please select at least one subdirectory containing Python files.';
+                errorMsg.style.display = 'block';
+                
+                if (!document.querySelector('.error-message')) {
+                    const modalBody = document.querySelector('.modal-body');
+                    modalBody.insertBefore(errorMsg, modalBody.firstChild);
+                }
+                
+                return; // Don't close modal
+            } else {
+                // Hide error if it exists
+                errorMsg.style.display = 'none';
+            }
+            
+            // Close modal
+            modal.style.display = 'none';
+            
+            // Update file list and enable analyze button
+            updateFileList();
+            analyzeBtn.disabled = false;
+        };
+        
+        // Handle cancel button
+        cancelBtn.onclick = function() {
+            // Reset directory input
+            directoryInput.value = '';
+            selectedFiles = [];
+            allFiles = [];
+            subdirectories = [];
+            selectedSubdirectories = [];
+            
+            // Close modal
+            modal.style.display = 'none';
+            
+            // Update file list and disable analyze button
+            updateFileList();
+            analyzeBtn.disabled = true;
+        };
+    }
+    
+    /**
+     * Count Python files in a specific directory
+     * @param {string} dir - Directory name
+     * @returns {number} - Number of Python files
+     */
+    function countPythonFilesInDir(dir) {
+        return allFiles.filter(file => {
+            const path = file.webkitRelativePath || file.name;
+            return path.startsWith(dir + '/') && path.endsWith('.py');
+        }).length;
+    }
+    
+    /**
+     * Update the selected file count in the modal
+     */
+    function updateSelectedFileCount() {
+        const selectedDirs = [];
+        const checkboxes = document.querySelectorAll('#subdirectory-list input[type="checkbox"]');
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedDirs.push(checkbox.value);
+            }
+        });
+        
+        // Count Python files in selected directories
+        const count = allFiles.filter(file => {
+            const path = file.webkitRelativePath || file.name;
+            const pathParts = path.split('/');
+            
+            return path.endsWith('.py') &&
+                   pathParts.length > 1 &&
+                   selectedDirs.includes(pathParts[0]);
+        }).length;
+        
+        // Update count display
+        document.getElementById('selected-file-count').textContent = count;
+        
+        // Update button state based on count
+        const confirmBtn = document.getElementById('confirm-subdirectory-btn');
+        confirmBtn.disabled = count === 0 || count > MAX_FILE_COUNT;
+        
+        // Show warning if too many files
+        const errorMsg = document.querySelector('.error-message') || document.createElement('div');
+        errorMsg.className = 'error-message';
+        
+        if (count > MAX_FILE_COUNT) {
+            errorMsg.textContent = `Too many files selected (${count}). Please select fewer subdirectories to stay under the limit of ${MAX_FILE_COUNT} files.`;
+            errorMsg.style.display = 'block';
+            
+            if (!document.querySelector('.error-message')) {
+                const modalBody = document.querySelector('.modal-body');
+                modalBody.insertBefore(errorMsg, modalBody.firstChild);
+            }
+        } else {
+            errorMsg.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Ignore common directories that are typically not relevant for code analysis
+     */
+    function ignoreCommonDirectories() {
+        const checkboxes = document.querySelectorAll('#subdirectory-list input[type="checkbox"]');
+        
+        checkboxes.forEach(checkbox => {
+            if (COMMON_IGNORE_DIRS.some(ignoreDir =>
+                checkbox.value.toLowerCase().includes(ignoreDir.toLowerCase()))) {
+                checkbox.checked = false;
+            }
+        });
+    }
+    
+    /**
+     * Filter files based on selected subdirectories
+     */
+    function filterFilesBySubdirectories() {
+        selectedFiles = allFiles.filter(file => {
+            const path = file.webkitRelativePath || file.name;
+            const pathParts = path.split('/');
+            
+            return path.endsWith('.py') &&
+                   pathParts.length > 1 &&
+                   selectedSubdirectories.includes(pathParts[0]);
+        });
+    }
     
     // Handle analyze button click
     analyzeBtn.addEventListener('click', async function() {
