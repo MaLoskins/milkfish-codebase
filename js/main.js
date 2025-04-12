@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let subdirectories = [];
     let selectedSubdirectories = [];
     const MAX_FILE_COUNT = 300;
-    const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+    const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 15MB in bytes
     let totalFileSize = 0; // Track total size of selected files
     
     // Common directories to ignore
