@@ -14,6 +14,7 @@ class GraphVisualizer {
         this.width = 0;
         this.height = 0;
         this.data = { nodes: [], links: [] };
+        this.selectedNode = null;
         
         // Color scheme for different node types using CSS variables
         this.colorMap = {
@@ -259,6 +260,12 @@ class GraphVisualizer {
         const incoming = this.data.links.filter(link => link.target.id === node.id).length;
         const outgoing = this.data.links.filter(link => link.source.id === node.id).length;
         
+        // Track the selected node
+        this.selectedNode = node;
+        
+        // Mark the node as selected in the data
+        this.data.nodes.forEach(n => n.selected = (n.id === node.id));
+        
         // Highlight the selected node and connected nodes
         this.highlightConnections(node);
         
@@ -377,6 +384,10 @@ class GraphVisualizer {
      * Reset node highlighting
      */
     resetHighlighting() {
+        // Clear selected node
+        this.selectedNode = null;
+        this.data.nodes.forEach(n => n.selected = false);
+        
         this.nodeElements.attr('opacity', 1)
             .attr('stroke', null)
             .attr('stroke-width', null);

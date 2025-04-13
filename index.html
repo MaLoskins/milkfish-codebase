@@ -104,9 +104,14 @@
                 <h2>Codebase Visualization</h2>
                 <div class="visualization-controls">
                     <div class="buttons">
-                        <button id="zoom-in">+</button>
-                        <button id="zoom-out">-</button>
-                        <button id="reset-view">⟲</button>
+                        <button id="zoom-in" title="Zoom In">+</button>
+                        <button id="zoom-out" title="Zoom Out">-</button>
+                        <button id="reset-view" title="Reset View">⟲</button>
+                    </div>
+                    <div class="export-controls">
+                        <button id="export-json" title="Export as JSON">{ }</button>
+                        <button id="export-svg" title="Export as SVG">SVG</button>
+                        <button id="export-png" title="Export as PNG">P</button>
                     </div>
                 </div>
                 <div id="visualization"></div>
@@ -167,6 +172,7 @@
     <script src="js/parser.js"></script>
     <script src="js/graph.js"></script>
     <script src="js/github.js"></script>
+    <script src="js/export.js"></script>
     <script src="js/main.js"></script>
     
     <!-- Load Pyodide for AST-based Python parsing -->

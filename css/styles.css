@@ -489,7 +489,7 @@ header h1::after {
 }
 
 #file-list-container {
-    max-height: 550px;
+    max-height: 610px;
     overflow-y: auto;
     border-radius: var(--radius-sm);
     background-color: var(--darker-bg);
@@ -639,6 +639,56 @@ header h1::after {
     gap: 10px;
 }
 
+.export-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.export-controls button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-circle);
+    font-size: 18px;
+    padding: 0;
+    transition: all var(--transition-fast);
+    background-color: var(--darker-bg);
+    color: var(--text-color);
+}
+
+.export-controls button:hover {
+    background-color: var(--magenta-primary);
+    color: white;
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+#export-json {
+    border: 2px solid var(--file-color);
+    font-size: 14px;
+}
+
+#export-svg {
+    border: 2px solid var(--class-color);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+#export-png {
+    border: 2px solid var(--function-color);
+}
+
+#share-url {
+    border: 2px solid var(--method-color);
+}
+
+#save-state {
+    border: 2px solid var(--import-color);
+}
+
 .visualization-controls button {
     display: flex;
     align-items: center;
@@ -662,7 +712,7 @@ header h1::after {
 
 #visualization {
     width: 100%;
-    height: 600px;
+    height: 800px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background-color: var(--darker-bg);
@@ -1298,6 +1348,68 @@ footer::before {
     to {
         opacity: 1;
     }
+}
+
+/* Export Modal Styles */
+#export-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    overflow: auto;
+}
+
+#export-modal .modal-content {
+    background-color: var(--card-bg);
+    margin: 10% auto;
+    width: 80%;
+    max-width: 800px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
+    animation: fadeIn 0.3s;
+}
+
+#export-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#export-modal .modal-header h3 {
+    margin: 0;
+    color: var(--magenta-primary);
+}
+
+#export-modal .close-modal {
+    color: var(--text-secondary);
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#export-modal .close-modal:hover {
+    color: var(--magenta-primary);
+}
+
+#export-modal .modal-body {
+    padding: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+#export-modal .modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
 }
 
 /* Responsive Styles */
