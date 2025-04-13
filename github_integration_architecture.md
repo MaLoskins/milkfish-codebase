@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The plan is to enhance the existing browser-based MilkFish Vizualizations to allow users to input a GitHub repository URL, fetch the repository contents, and analyze the Python files without requiring a backend server. We'll focus on public repositories initially and leverage the existing size limiting functionality.
+The plan is to enhance the existing browser-based MilkFish Visualizations to allow users to input a GitHub repository URL, fetch the repository contents, and analyze the Python files without requiring a backend server. We'll focus on public repositories initially and leverage the existing size limiting functionality.
 
 ## 2. Architecture Design
 

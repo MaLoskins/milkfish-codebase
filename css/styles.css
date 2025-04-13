@@ -162,13 +162,16 @@ header h1 {
     position: relative;
     display: inline-block;
     padding: 0 15px;
-    background: linear-gradient(45deg, var(--magenta-primary), var(--magenta-secondary));
+    background: linear-gradient(90deg, var(--file-color), var(--class-color), var(--function-color));
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
-    text-shadow: 0 0 15px rgba(232, 62, 140, 0.7),
-                 0 5px 10px rgba(0, 0, 0, 0.3);
-    animation: glow 3s ease-in-out infinite alternate;
+    text-shadow: 0 0 5px rgba(232, 62, 140, 0.5),
+                 0 0 10px rgba(232, 62, 140, 0.3),
+                 0 0 15px rgba(232, 62, 140, 0.2);
+    position: relative;
+    text-shadow: 0 2px 10px rgba(232, 62, 140, 0.6);
+    transition: all var(--transition-medium);
 }
 
 header h1::before {
