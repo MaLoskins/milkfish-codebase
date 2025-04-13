@@ -9,6 +9,7 @@ class PythonParser {
         this.nodeMap = {};
         this.nodeIndex = 0;
         this.pythonFiles = new Set(); // Track Python file names
+        this.filePathMap = {}; // Map to track filenames and their full paths
     }
 
     /**
@@ -23,6 +24,7 @@ class PythonParser {
         this.nodeMap = {};
         this.nodeIndex = 0;
         this.pythonFiles.clear();
+        this.filePathMap = {};
         
         // First, collect all Python file names
         for (const file of files) {
@@ -37,9 +39,15 @@ class PythonParser {
         for (const file of files) {
             if (file.name.endsWith('.py')) {
                 const content = await this.readFile(file);
-                this.parseFile(file.name, content);
+                const filepath = file.webkitRelativePath || file.name;
+                this.parseFile(file.name, content, filepath);
             }
         }
+        
+        // Post-processing: Update labels for duplicate filenames
+        console.log("Starting post-processing to handle duplicate filenames...");
+        this.handleDuplicateFilenames();
+        console.log("Post-processing complete");
         
         // Calculate node sizes based on connections (degree)
         this.calculateNodeSizes();
@@ -68,10 +76,23 @@ class PythonParser {
      * Parses a Python file and extracts components
      * @param {string} filename - Name of the file
      * @param {string} content - Content of the file
+     * @param {string} filepath - Full path of the file
      */
-    parseFile(filename, content) {
-        // Create a node for the file
-        const fileNode = this.createNode('file', filename, filename);
+    parseFile(filename, content, filepath) {
+        console.log(`Parsing file: ${filename}, filepath: ${filepath}`);
+        
+        // Track this filename and its path
+        if (!this.filePathMap[filename]) {
+            this.filePathMap[filename] = [];
+            console.log(`  Creating new entry in filePathMap for ${filename}`);
+        }
+        this.filePathMap[filename].push(filepath);
+        console.log(`  Added ${filepath} to filePathMap for ${filename}`);
+        
+        // Create a node for the file using the full path as ID for uniqueness
+        // The label is just the filename initially, but will be updated for duplicates in handleDuplicateFilenames
+        const fileNode = this.createNode('file', filepath, filename);
+        console.log(`  Created file node with id: ${filepath}, label: ${filename}`);
         
         // Split content into lines for analysis
         const lines = content.split('\n');
@@ -80,7 +101,7 @@ class PythonParser {
         this.parseImports(lines, fileNode);
         
         // Process classes and functions
-        this.parseClassesAndFunctions(lines, fileNode, filename);
+        this.parseClassesAndFunctions(lines, fileNode, filename, filepath);
     }
     
     /**
@@ -120,7 +141,16 @@ class PythonParser {
                 if (this.pythonFiles.has(module)) {
                     // Use the file node instead of creating a module node
                     const fileName = `${module}.py`;
-                    moduleNode = this.nodeMap[fileName] || this.createOrGetNode('file', fileName, fileName);
+                    
+                    // Find the file node by checking all paths for this filename
+                    let foundNode = null;
+                    if (this.filePathMap[fileName]) {
+                        // Use the first path found for this filename
+                        const filePath = this.filePathMap[fileName][0];
+                        foundNode = this.nodeMap[filePath];
+                    }
+                    
+                    moduleNode = foundNode || this.createOrGetNode('module', module, module);
                 } else {
                     // External module, create a module node as before
                     moduleNode = this.createOrGetNode('module', module, module);
@@ -146,7 +176,7 @@ class PythonParser {
      * @param {Object} fileNode - File node to link classes/functions to
      * @param {string} filename - Name of the file
      */
-    parseClassesAndFunctions(lines, fileNode, filename) {
+    parseClassesAndFunctions(lines, fileNode, filename, filepath) {
         const classRegex = /^class\s+([a-zA-Z0-9_]+)(?:\(([a-zA-Z0-9_.,\s]+)\))?:/;
         const funcRegex = /^def\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\):/;
         const methodRegex = /^\s+def\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\):/;
@@ -160,7 +190,7 @@ class PythonParser {
             let match = line.match(classRegex);
             if (match) {
                 const className = match[1];
-                currentClass = this.createNode('class', `${filename}:${className}`, className);
+                currentClass = this.createNode('class', `${filepath}:${className}`, className);
                 this.createLink(fileNode.id, currentClass.id);
                 
                 // If class inherits from other classes
@@ -178,7 +208,7 @@ class PythonParser {
             match = line.match(funcRegex);
             if (match && !line.trim().startsWith(' ')) {
                 const funcName = match[1];
-                const funcNode = this.createNode('function', `${filename}:${funcName}`, funcName);
+                const funcNode = this.createNode('function', `${filepath}:${funcName}`, funcName);
                 this.createLink(fileNode.id, funcNode.id);
                 
                 // Analyze function body for calls to other functions
@@ -190,8 +220,8 @@ class PythonParser {
             match = line.match(methodRegex);
             if (match && currentClass) {
                 const methodName = match[1];
-                const methodNode = this.createNode('method', 
-                    `${filename}:${currentClass.label}.${methodName}`, 
+                const methodNode = this.createNode('method',
+                    `${filepath}:${currentClass.label}.${methodName}`,
                     `${currentClass.label}.${methodName}`);
                 this.createLink(currentClass.id, methodNode.id);
                 
@@ -342,6 +372,70 @@ class PythonParser {
             // Base size + additional size based on connections
             node.size = 5 + (degree * 2);
         });
+    }
+    
+    /**
+     * Handle duplicate filenames by updating their labels to include parent directory
+     * This ensures files with the same name in different directories are displayed distinctly
+     */
+    handleDuplicateFilenames() {
+        console.log("Starting duplicate filename detection...");
+        
+        // First, collect all filenames (without paths) to find duplicates
+        const filenameCount = {};
+        const filenameToNodes = {};
+        
+        // Count occurrences of each filename and map them to their nodes
+        this.nodes.forEach(node => {
+            // Only process File type nodes
+            if (node.type === 'file') {
+                const filename = node.label;
+                
+                // Initialize counters and maps
+                if (!filenameCount[filename]) {
+                    filenameCount[filename] = 0;
+                    filenameToNodes[filename] = [];
+                }
+                
+                filenameCount[filename]++;
+                filenameToNodes[filename].push(node);
+            }
+        });
+        
+        // Process duplicate filenames
+        for (const [filename, count] of Object.entries(filenameCount)) {
+            if (count > 1) {
+                console.log(`Found duplicate filename: ${filename} in ${count} locations`);
+                
+                // Update labels for all nodes with this filename
+                filenameToNodes[filename].forEach(node => {
+                    // Extract parent directory from the node ID (which is the full path)
+                    const path = node.id;
+                    let parentDir = '';
+                    
+                    // Try to extract parent directory using forward slash
+                    const forwardSlashParts = path.split('/');
+                    if (forwardSlashParts.length > 1) {
+                        parentDir = forwardSlashParts[forwardSlashParts.length - 2];
+                    } else {
+                        // Try with backslash for Windows paths
+                        const backslashParts = path.split('\\');
+                        if (backslashParts.length > 1) {
+                            parentDir = backslashParts[backslashParts.length - 2];
+                        }
+                    }
+                    
+                    // Update the label to include parent directory
+                    if (parentDir) {
+                        const oldLabel = node.label;
+                        node.label = `${filename} (${parentDir})`;
+                        console.log(`  Updated label: '${oldLabel}' → '${node.label}'`);
+                    }
+                });
+            }
+        }
+        
+        console.log("Duplicate filename handling complete");
     }
 }
 

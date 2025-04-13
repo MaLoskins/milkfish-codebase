@@ -833,58 +833,146 @@ function setupDemoButton() {
  */
 async function loadSampleCode() {
     try {
-        // Sample code files to fetch
-        const sampleFiles = [
-            'main.py',
-            'utils.py',
-            'models.py',
-            'database.py'
+        console.log("Loading test duplicate files with hardcoded content...");
+        
+        // Create test files with hardcoded content
+        const testFiles = [
+            {
+                name: 'main.py',
+                webkitRelativePath: 'test_duplicate_files/main.py',
+                content: `# Import from both app1 and app2
+from app1 import User
+from app2 import Product
+
+# Import from both utils files
+from utils import subdirectory_utility_function
+from utils import root_utility_function
+
+def main():
+    # Create a user from app1
+    user = User("john_doe", "john@example.com")
+    print(user)
+    
+    # Create a product from app2
+    product = Product("Laptop", 999.99)
+    print(product)
+    
+    # Use utility functions
+    print(root_utility_function())
+    print(subdirectory_utility_function())
+
+if __name__ == "__main__":
+    main()`
+            },
+            {
+                name: 'utils.py',
+                webkitRelativePath: 'test_duplicate_files/utils.py',
+                content: `def root_utility_function():
+    """A utility function in the root directory"""
+    return "This is a utility function from the root directory"`
+            },
+            {
+                name: 'utils.py',
+                webkitRelativePath: 'test_duplicate_files/utils/utils.py',
+                content: `def subdirectory_utility_function():
+    """A utility function in the utils subdirectory"""
+    return "This is a utility function from the utils subdirectory"`
+            },
+            {
+                name: 'models.py',
+                webkitRelativePath: 'test_duplicate_files/app1/models.py',
+                content: `class User:
+    def __init__(self, username, email):
+        self.username = username
+        self.email = email
+        
+    def __str__(self):
+        return f"App1 User: {self.username}"`
+            },
+            {
+                name: 'models.py',
+                webkitRelativePath: 'test_duplicate_files/app2/models.py',
+                content: `class Product:
+    def __init__(self, name, price):
+        self.name = name
+        self.price = price
+        
+    def __str__(self):
+        return f"App2 Product: {self.name}"`
+            },
+            {
+                name: '__init__.py',
+                webkitRelativePath: 'test_duplicate_files/app1/__init__.py',
+                content: `# App1 initialization
+from .models import User`
+            },
+            {
+                name: '__init__.py',
+                webkitRelativePath: 'test_duplicate_files/app2/__init__.py',
+                content: `# App2 initialization
+from .models import Product`
+            },
+            {
+                name: '__init__.py',
+                webkitRelativePath: 'test_duplicate_files/utils/__init__.py',
+                content: `# Utils package initialization
+from .utils import subdirectory_utility_function`
+            }
         ];
         
-        // Fetch and load the files
+        // Create File objects from the hardcoded content
         const loadedFiles = [];
         
-        for (const filename of sampleFiles) {
-            const response = await fetch(`sample_python_code/${filename}`);
-            if (!response.ok) {
-                throw new Error(`Failed to load ${filename}`);
-            }
+        for (const fileInfo of testFiles) {
+            console.log(`Creating file object for ${fileInfo.webkitRelativePath}...`);
             
-            const content = await response.text();
+            // Create a File object with the content
+            const file = new File([fileInfo.content], fileInfo.name, { type: 'text/x-python' });
             
-            // Create a File object
-            const file = new File([content], filename, { type: 'text/x-python' });
+            // Add the webkitRelativePath property
+            Object.defineProperty(file, 'webkitRelativePath', {
+                value: fileInfo.webkitRelativePath,
+                writable: false
+            });
+            
             loadedFiles.push(file);
+            console.log(`Created file object for ${fileInfo.webkitRelativePath}, content length: ${fileInfo.content.length}`);
         }
+        
+        console.log(`Successfully created ${loadedFiles.length} test file objects`);
         
         // Display files in the list
         const fileList = document.getElementById('file-list');
         fileList.innerHTML = '';
         
         const header = document.createElement('li');
-        header.innerHTML = '<strong>Sample Python Code</strong>';
+        header.innerHTML = '<strong>Test Duplicate Files</strong>';
         fileList.appendChild(header);
         
         loadedFiles.forEach(file => {
             const li = document.createElement('li');
             li.className = 'file-item';
-            li.textContent = file.name;
+            li.textContent = file.webkitRelativePath;
             fileList.appendChild(li);
         });
+        
+        // Update file count display
+        document.getElementById('python-file-count').textContent = loadedFiles.length;
         
         // Enable the analyze button
         document.getElementById('analyze-btn').disabled = false;
         
-        // Parse and visualize the sample code
+        // Parse and visualize the test files
+        console.log("Parsing test files...");
         const graphData = await pythonParser.parseFiles(loadedFiles);
         graphVisualizer.update(graphData);
         
         // Show success message
-        showNotification('Sample code loaded and analyzed!');
+        showNotification('Test duplicate files loaded and analyzed!');
         
     } catch (error) {
-        console.error('Error loading sample code:', error);
-        showNotification('Error loading sample code. See console for details.', true);
+        console.error('Error loading test files:', error);
+        showNotification('Error loading test files. See console for details.', true);
     }
 }
 
