@@ -856,9 +856,21 @@ function setupGitHubIntegration() {
             // Clear any previous selection
             // We can't directly call the clearFileSelection function as it's in a different scope
             // So we'll simulate it by clearing the file list and disabling buttons
-            document.getElementById('file-list').innerHTML = '<li>No Python files selected</li>';
-            document.getElementById('python-file-count').textContent = '0';
-            document.getElementById('analyze-btn').disabled = true;
+            const fileListElement = document.getElementById('file-list');
+            const pythonFileCountElement = document.getElementById('python-file-count');
+            const analyzeButton = document.getElementById('analyze-btn');
+            
+            if (fileListElement) {
+                fileListElement.innerHTML = '<li>No Python files selected</li>';
+            }
+            
+            if (pythonFileCountElement) {
+                pythonFileCountElement.textContent = '0';
+            }
+            
+            if (analyzeButton) {
+                analyzeButton.disabled = true;
+            }
             document.getElementById('clear-selection-btn').disabled = true;
             
             // Define constants for file limits (same as in the main scope)
@@ -1062,22 +1074,27 @@ async function processGitHubFiles(loadingIndicator) {
         // We can't directly call addFilesToCollection as it's in a different scope
         // Instead, we'll display the files in the file list and enable the analyze button
         const fileList = document.getElementById('file-list');
-        fileList.innerHTML = '';
-        
-        // Display files in the list
-        const header = document.createElement('li');
-        header.innerHTML = '<strong>GitHub Repository Files</strong>';
-        fileList.appendChild(header);
-        
-        fileObjects.forEach(file => {
-            const li = document.createElement('li');
-            li.className = 'file-item';
-            li.textContent = file.webkitRelativePath || file.name;
-            fileList.appendChild(li);
-        });
-        
+        if (fileList) {
+            fileList.innerHTML = '';
+            
+            // Display files in the list
+            const header = document.createElement('li');
+            header.innerHTML = '<strong>GitHub Repository Files</strong>';
+            fileList.appendChild(header);
+            
+            fileObjects.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'file-item';
+                li.textContent = file.webkitRelativePath || file.name;
+                fileList.appendChild(li);
+            });
+        }
         // Update file count display
-        document.getElementById('python-file-count').textContent = fileObjects.length;
+        const pythonFileCountElement = document.getElementById('python-file-count');
+        if (pythonFileCountElement) {
+            pythonFileCountElement.textContent = fileObjects.length;
+        }
+        
         
         // Enable the analyze button
         const analyzeButton = document.getElementById('analyze-btn');
@@ -1236,24 +1253,32 @@ from .utils import subdirectory_utility_function`
         
         // Display files in the list
         const fileList = document.getElementById('file-list');
-        fileList.innerHTML = '';
-        
-        const header = document.createElement('li');
-        header.innerHTML = '<strong>Test Duplicate Files</strong>';
-        fileList.appendChild(header);
-        
-        loadedFiles.forEach(file => {
-            const li = document.createElement('li');
-            li.className = 'file-item';
-            li.textContent = file.webkitRelativePath;
-            fileList.appendChild(li);
-        });
-        
+        if (fileList) {
+            fileList.innerHTML = '';
+            
+            const header = document.createElement('li');
+            header.innerHTML = '<strong>Test Duplicate Files</strong>';
+            fileList.appendChild(header);
+            
+            loadedFiles.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'file-item';
+                li.textContent = file.webkitRelativePath;
+                fileList.appendChild(li);
+            });
+        }
         // Update file count display
-        document.getElementById('python-file-count').textContent = loadedFiles.length;
+        const pythonFileCountElement = document.getElementById('python-file-count');
+        if (pythonFileCountElement) {
+            pythonFileCountElement.textContent = loadedFiles.length;
+        }
         
         // Enable the analyze button
-        document.getElementById('analyze-btn').disabled = false;
+        const analyzeButton = document.getElementById('analyze-btn');
+        if (analyzeButton) {
+            analyzeButton.disabled = false;
+        }
+        
         
         // Parse and visualize the test files
         console.log("Parsing test files...");
