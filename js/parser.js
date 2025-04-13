@@ -1,6 +1,7 @@
 /**
  * Python Code Parser
  * Parses Python code to extract classes, functions, imports, etc.
+ * Uses Pyodide to leverage Python's AST module for accurate parsing
  */
 class PythonParser {
     constructor() {
@@ -10,6 +11,179 @@ class PythonParser {
         this.nodeIndex = 0;
         this.pythonFiles = new Set(); // Track Python file names
         this.filePathMap = {}; // Map to track filenames and their full paths
+        this.pyodideReady = false;
+        this.pyodide = null;
+        this.initializePyodide();
+    }
+
+    /**
+     * Initialize Pyodide for Python AST parsing
+     */
+    async initializePyodide() {
+        try {
+            console.log("Loading Pyodide...");
+            this.pyodide = await loadPyodide();
+            // Load micropip to install packages
+            await this.pyodide.loadPackage("micropip");
+            const micropip = this.pyodide.pyimport("micropip");
+            
+            // Import standard libraries
+            await this.pyodide.runPythonAsync(`
+                import sys
+                import json
+            `);
+            
+            // Define Python functions for AST parsing
+            // Define Python functions for AST parsing
+            await this.pyodide.runPythonAsync(`
+                import ast
+                
+                def parse_python_code(code, filename):
+                    """
+                    Parse Python code using the AST module and extract information about
+                    classes, functions, methods, and imports.
+                    
+                    Args:
+                        code (str): Python code to parse
+                        filename (str): Name of the file being parsed
+                        
+                    Returns:
+                        dict: Dictionary containing extracted information
+                    """
+                    try:
+                        # Parse the code into an AST
+                        tree = ast.parse(code, filename=filename)
+                        
+                        # Initialize result structure
+                        result = {
+                            'imports': [],
+                            'from_imports': [],
+                            'classes': [],
+                            'functions': []
+                        }
+                        
+                        # Process all nodes in the AST
+                        for node in ast.walk(tree):
+                            # Extract imports
+                            if isinstance(node, ast.Import):
+                                for name in node.names:
+                                    result['imports'].append({
+                                        'name': name.name,
+                                        'asname': name.asname
+                                    })
+                            
+                            # Extract from imports
+                            elif isinstance(node, ast.ImportFrom):
+                                module = node.module or ''
+                                for name in node.names:
+                                    result['from_imports'].append({
+                                        'module': module,
+                                        'name': name.name,
+                                        'asname': name.asname
+                                    })
+                            
+                            # Extract classes
+                            elif isinstance(node, ast.ClassDef):
+                                class_info = {
+                                    'name': node.name,
+                                    'bases': [self._get_name(base) for base in node.bases],
+                                    'methods': [],
+                                    'lineno': node.lineno,
+                                    'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
+                                }
+                                
+                                # Extract methods
+                                for item in node.body:
+                                    if isinstance(item, ast.FunctionDef):
+                                        method_info = self._extract_function_info(item)
+                                        method_info['parent_class'] = node.name
+                                        class_info['methods'].append(method_info)
+                                
+                                result['classes'].append(class_info)
+                            
+                            # Extract top-level functions
+                            elif isinstance(node, ast.FunctionDef) and isinstance(node.parent, ast.Module):
+                                func_info = self._extract_function_info(node)
+                                result['functions'].append(func_info)
+                        
+                        return result
+                    
+                    except SyntaxError as e:
+                        return {
+                            'error': f"Syntax error in {filename}: {str(e)}",
+                            'imports': [],
+                            'from_imports': [],
+                            'classes': [],
+                            'functions': []
+                        }
+                    except Exception as e:
+                        return {
+                            'error': f"Error parsing {filename}: {str(e)}",
+                            'imports': [],
+                            'from_imports': [],
+                            'classes': [],
+                            'functions': []
+                        }
+                
+                def _get_name(node):
+                    """Extract name from an AST node"""
+                    if isinstance(node, ast.Name):
+                        return node.id
+                    elif isinstance(node, ast.Attribute):
+                        return f"{self._get_name(node.value)}.{node.attr}"
+                    elif isinstance(node, ast.Call):
+                        return self._get_name(node.func)
+                    elif isinstance(node, ast.Subscript):
+                        return self._get_name(node.value)
+                    else:
+                        return str(node)
+                
+                def _extract_function_info(node):
+                    """Extract information about a function or method"""
+                    # Get function arguments
+                    args = []
+                    for arg in node.args.args:
+                        args.append(arg.arg)
+                    
+                    # Extract function calls within the function body
+                    function_calls = []
+                    for item in ast.walk(node):
+                        if isinstance(item, ast.Call):
+                            call_name = self._get_name(item.func)
+                            function_calls.append(call_name)
+                    
+                    # Create function info dictionary
+                    return {
+                        'name': node.name,
+                        'args': args,
+                        'function_calls': function_calls,
+                        'lineno': node.lineno,
+                        'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
+                    }
+                
+                # Add parent references to AST nodes (needed for context)
+                def add_parent_refs(tree):
+                    for node in ast.walk(tree):
+                        for child in ast.iter_child_nodes(node):
+                            child.parent = node
+                    return tree
+                
+                # Override ast.parse to add parent references
+                original_parse = ast.parse
+                def parse_with_parent_refs(*args, **kwargs):
+                    tree = original_parse(*args, **kwargs)
+                    return add_parent_refs(tree)
+                
+                ast.parse = parse_with_parent_refs
+            `);
+            
+            this.pyodideReady = true;
+            console.log("Pyodide initialized successfully");
+        } catch (error) {
+            console.error("Failed to initialize Pyodide:", error);
+            // Fallback to regex-based parsing if Pyodide fails to load
+            this.pyodideReady = false;
+        }
     }
 
     /**
@@ -18,6 +192,23 @@ class PythonParser {
      * @returns {Object} - Graph data with nodes and links
      */
     async parseFiles(files) {
+        // Reset parser state
+        this.nodes = [];
+        this.links = [];
+        this.nodeMap = {};
+        this.nodeIndex = 0;
+        this.pythonFiles.clear();
+        this.filePathMap = {};
+        
+        // Make sure Pyodide is ready
+        if (!this.pyodideReady) {
+            try {
+                await this.initializePyodide();
+            } catch (error) {
+                console.error("Could not initialize Pyodide:", error);
+                // Continue with regex-based parsing as fallback
+            }
+        }
         // Reset parser state
         this.nodes = [];
         this.links = [];
@@ -78,7 +269,7 @@ class PythonParser {
      * @param {string} content - Content of the file
      * @param {string} filepath - Full path of the file
      */
-    parseFile(filename, content, filepath) {
+    async parseFile(filename, content, filepath) {
         console.log(`Parsing file: ${filename}, filepath: ${filepath}`);
         
         // Track this filename and its path
@@ -90,9 +281,175 @@ class PythonParser {
         console.log(`  Added ${filepath} to filePathMap for ${filename}`);
         
         // Create a node for the file using the full path as ID for uniqueness
-        // The label is just the filename initially, but will be updated for duplicates in handleDuplicateFilenames
         const fileNode = this.createNode('file', filepath, filename);
         console.log(`  Created file node with id: ${filepath}, label: ${filename}`);
+        
+        if (this.pyodideReady) {
+            try {
+                // Use Pyodide to parse the Python code with AST
+                const result = await this.pyodide.runPythonAsync(`
+                    parse_python_code(${JSON.stringify(content)}, ${JSON.stringify(filename)})
+                `);
+                
+                const parseResult = result.toJs();
+                
+                // Check if there was an error during parsing
+                if (parseResult.error) {
+                    console.error(parseResult.error);
+                    // Fall back to regex-based parsing if AST parsing fails
+                    this.parseWithRegex(content, fileNode, filename, filepath);
+                    return;
+                }
+                
+                // Process imports
+                this.processImports(parseResult, fileNode);
+                
+                // Process classes and functions
+                this.processClassesAndFunctions(parseResult, fileNode, filename, filepath);
+                
+            } catch (error) {
+                console.error("Error using Pyodide for parsing:", error);
+                // Fall back to regex-based parsing if AST parsing fails
+                this.parseWithRegex(content, fileNode, filename, filepath);
+            }
+        } else {
+            // Fall back to regex-based parsing if Pyodide is not available
+            this.parseWithRegex(content, fileNode, filename, filepath);
+        }
+    }
+    
+    /**
+     * Parse import statements
+     * @param {string[]} lines - Lines of Python code
+     * @param {Object} fileNode - File node to link imports to
+     */
+    /**
+     * Process imports from AST parsing result
+     * @param {Object} parseResult - Result from AST parsing
+     * @param {Object} fileNode - File node to link imports to
+     */
+    processImports(parseResult, fileNode) {
+        // Process regular imports
+        parseResult.imports.forEach(importInfo => {
+            const importName = importInfo.name;
+            const importNode = this.createOrGetNode('import', importName, importName);
+            this.createLink(fileNode.id, importNode.id);
+        });
+        
+        // Process from imports
+        parseResult.from_imports.forEach(importInfo => {
+            const module = importInfo.module;
+            const importName = importInfo.name;
+            
+            let moduleNode;
+            
+            // Check if this module corresponds to a Python file in the project
+            if (this.pythonFiles.has(module)) {
+                // Use the file node instead of creating a module node
+                const fileName = `${module}.py`;
+                
+                // Find the file node by checking all paths for this filename
+                let foundNode = null;
+                if (this.filePathMap[fileName]) {
+                    // Use the first path found for this filename
+                    const filePath = this.filePathMap[fileName][0];
+                    foundNode = this.nodeMap[filePath];
+                }
+                
+                moduleNode = foundNode || this.createOrGetNode('module', module, module);
+            } else {
+                // External module, create a module node
+                moduleNode = this.createOrGetNode('module', module, module);
+            }
+            
+            this.createLink(fileNode.id, moduleNode.id);
+            
+            if (importName !== '*') {
+                // Create nodes for each imported item and link to module
+                const importNode = this.createOrGetNode('import', `${module}.${importName}`, importName);
+                this.createLink(moduleNode.id, importNode.id);
+                this.createLink(fileNode.id, importNode.id);
+            }
+        });
+    }
+    
+    /**
+     * Process classes and functions from AST parsing result
+     * @param {Object} parseResult - Result from AST parsing
+     * @param {Object} fileNode - File node to link classes/functions to
+     * @param {string} filename - Name of the file
+     * @param {string} filepath - Full path of the file
+     */
+    processClassesAndFunctions(parseResult, fileNode, filename, filepath) {
+        // Process classes
+        parseResult.classes.forEach(classInfo => {
+            const className = classInfo.name;
+            const classNode = this.createNode('class', `${filepath}:${className}`, className);
+            this.createLink(fileNode.id, classNode.id);
+            
+            // Process parent classes
+            classInfo.bases.forEach(parent => {
+                const parentNode = this.createOrGetNode('class', parent, parent);
+                this.createLink(classNode.id, parentNode.id);
+            });
+            
+            // Process methods
+            classInfo.methods.forEach(methodInfo => {
+                const methodName = methodInfo.name;
+                const methodNode = this.createNode(
+                    'method',
+                    `${filepath}:${className}.${methodName}`,
+                    `${className}.${methodName}`
+                );
+                this.createLink(classNode.id, methodNode.id);
+                
+                // Process function calls within the method
+                methodInfo.function_calls.forEach(call => {
+                    let callNode;
+                    if (call.includes('.')) {
+                        // It's a method or attribute access
+                        callNode = this.createOrGetNode('method', call, call);
+                    } else {
+                        // It's a function
+                        callNode = this.createOrGetNode('function', call, call);
+                    }
+                    
+                    this.createLink(methodNode.id, callNode.id);
+                });
+            });
+        });
+        
+        // Process top-level functions
+        parseResult.functions.forEach(funcInfo => {
+            const funcName = funcInfo.name;
+            const funcNode = this.createNode('function', `${filepath}:${funcName}`, funcName);
+            this.createLink(fileNode.id, funcNode.id);
+            
+            // Process function calls within the function
+            funcInfo.function_calls.forEach(call => {
+                let callNode;
+                if (call.includes('.')) {
+                    // It's a method or attribute access
+                    callNode = this.createOrGetNode('method', call, call);
+                } else {
+                    // It's a function
+                    callNode = this.createOrGetNode('function', call, call);
+                }
+                
+                this.createLink(funcNode.id, callNode.id);
+            });
+        });
+    }
+    
+    /**
+     * Fallback to regex-based parsing if AST parsing fails
+     * @param {string} content - Content of the file
+     * @param {Object} fileNode - File node
+     * @param {string} filename - Name of the file
+     * @param {string} filepath - Full path of the file
+     */
+    parseWithRegex(content, fileNode, filename, filepath) {
+        console.log(`Falling back to regex-based parsing for ${filename}`);
         
         // Split content into lines for analysis
         const lines = content.split('\n');
@@ -105,7 +462,7 @@ class PythonParser {
     }
     
     /**
-     * Parse import statements
+     * Parse import statements using regex (fallback method)
      * @param {string[]} lines - Lines of Python code
      * @param {Object} fileNode - File node to link imports to
      */

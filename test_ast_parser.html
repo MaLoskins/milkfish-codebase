@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AST Parser Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #e83e8c;
+        }
+        pre {
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        button {
+            background-color: #e83e8c;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            background-color: #d6336c;
+        }
+        .file-input {
+            margin-bottom: 20px;
+        }
+        .file-input input {
+            display: none;
+        }
+        .file-input label {
+            background-color: #343a40;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+        }
+        .file-input label:hover {
+            background-color: #495057;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #e83e8c;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>AST Parser Test</h1>
+        <p>This page tests the AST-based Python parser using Pyodide.</p>
+        
+        <div class="file-input">
+            <input type="file" id="file-input" accept=".py">
+            <label for="file-input">Select Python File</label>
+        </div>
+        
+        <button id="parse-btn">Parse Python Code</button>
+        
+        <div class="loader" id="loader"></div>
+        
+        <div id="result">
+            <h2>Result:</h2>
+            <pre id="output">Select a Python file and click "Parse Python Code" to see the result.</pre>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        let pyodide = null;
+        let pyodideReady = false;
+        
+        // Initialize Pyodide
+        async function initializePyodide() {
+            if (!pyodideReady) {
+                try {
+                    document.getElementById('loader').style.display = 'block';
+                    console.log("Loading Pyodide...");
+                    pyodide = await loadPyodide();
+                    // Load micropip to install packages
+                    await pyodide.loadPackage("micropip");
+                    const micropip = pyodide.pyimport("micropip");
+                    
+                    // Import standard libraries
+                    // Define Python functions for AST parsing
+                    await pyodide.runPythonAsync(`
+                        import ast
+                        
+                        import sys
+                        import json
+                    `);
+                    
+                    // Define Python functions for AST parsing
+                    await pyodide.runPythonAsync(`
+                        def parse_python_code(code, filename):
+                            """
+                            Parse Python code using the AST module and extract information about
+                            classes, functions, methods, and imports.
+                            
+                            Args:
+                                code (str): Python code to parse
+                                filename (str): Name of the file being parsed
+                                
+                            Returns:
+                                dict: Dictionary containing extracted information
+                            """
+                            try:
+                                # Parse the code into an AST
+                                tree = ast.parse(code, filename=filename)
+                                
+                                # Initialize result structure
+                                result = {
+                                    'imports': [],
+                                    'from_imports': [],
+                                    'classes': [],
+                                    'functions': []
+                                }
+                                
+                                # Process all nodes in the AST
+                                for node in ast.walk(tree):
+                                    # Extract imports
+                                    if isinstance(node, ast.Import):
+                                        for name in node.names:
+                                            result['imports'].append({
+                                                'name': name.name,
+                                                'asname': name.asname
+                                            })
+                                    
+                                    # Extract from imports
+                                    elif isinstance(node, ast.ImportFrom):
+                                        module = node.module or ''
+                                        for name in node.names:
+                                            result['from_imports'].append({
+                                                'module': module,
+                                                'name': name.name,
+                                                'asname': name.asname
+                                            })
+                                    
+                                    # Extract classes
+                                    elif isinstance(node, ast.ClassDef):
+                                        class_info = {
+                                            'name': node.name,
+                                            'bases': [_get_name(base) for base in node.bases],
+                                            'methods': [],
+                                            'lineno': node.lineno,
+                                            'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
+                                        }
+                                        
+                                        # Extract methods
+                                        for item in node.body:
+                                            if isinstance(item, ast.FunctionDef):
+                                                method_info = _extract_function_info(item)
+                                                method_info['parent_class'] = node.name
+                                                class_info['methods'].append(method_info)
+                                        
+                                        result['classes'].append(class_info)
+                                    
+                                    # Extract top-level functions
+                                    elif isinstance(node, ast.FunctionDef) and isinstance(node.parent, ast.Module):
+                                        func_info = _extract_function_info(node)
+                                        result['functions'].append(func_info)
+                                
+                                return result
+                            
+                            except SyntaxError as e:
+                                return {
+                                    'error': f"Syntax error in {filename}: {str(e)}",
+                                    'imports': [],
+                                    'from_imports': [],
+                                    'classes': [],
+                                    'functions': []
+                                }
+                            except Exception as e:
+                                return {
+                                    'error': f"Error parsing {filename}: {str(e)}",
+                                    'imports': [],
+                                    'from_imports': [],
+                                    'classes': [],
+                                    'functions': []
+                                }
+                        
+                        def _get_name(node):
+                            """Extract name from an AST node"""
+                            if isinstance(node, ast.Name):
+                                return node.id
+                            elif isinstance(node, ast.Attribute):
+                                return f"{_get_name(node.value)}.{node.attr}"
+                            elif isinstance(node, ast.Call):
+                                return _get_name(node.func)
+                            elif isinstance(node, ast.Subscript):
+                                return _get_name(node.value)
+                            else:
+                                return str(node)
+                        
+                        def _extract_function_info(node):
+                            """Extract information about a function or method"""
+                            # Get function arguments
+                            args = []
+                            for arg in node.args.args:
+                                args.append(arg.arg)
+                            
+                            # Extract function calls within the function body
+                            function_calls = []
+                            for item in ast.walk(node):
+                                if isinstance(item, ast.Call):
+                                    call_name = _get_name(item.func)
+                                    function_calls.append(call_name)
+                            
+                            # Create function info dictionary
+                            return {
+                                'name': node.name,
+                                'args': args,
+                                'function_calls': function_calls,
+                                'lineno': node.lineno,
+                                'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
+                            }
+                        
+                        # Add parent references to AST nodes (needed for context)
+                        def add_parent_refs(tree):
+                            for node in ast.walk(tree):
+                                for child in ast.iter_child_nodes(node):
+                                    child.parent = node
+                            return tree
+                        
+                        # Override ast.parse to add parent references
+                        original_parse = ast.parse
+                        def parse_with_parent_refs(*args, **kwargs):
+                            tree = original_parse(*args, **kwargs)
+                            return add_parent_refs(tree)
+                        
+                        ast.parse = parse_with_parent_refs
+                    `);
+                    
+                    pyodideReady = true;
+                    console.log("Pyodide initialized successfully");
+                } catch (error) {
+                    console.error("Failed to initialize Pyodide:", error);
+                    document.getElementById('output').textContent = `Error initializing Pyodide: ${error.message}`;
+                } finally {
+                    document.getElementById('loader').style.display = 'none';
+                }
+            }
+        }
+        
+        // Parse Python code using Pyodide
+        async function parsePythonCode(code, filename) {
+            if (!pyodideReady) {
+                await initializePyodide();
+            }
+            
+            try {
+                const result = await pyodide.runPythonAsync(`
+                    parse_python_code(${JSON.stringify(code)}, ${JSON.stringify(filename)})
+                `);
+                
+                return result.toJs();
+            } catch (error) {
+                console.error("Error parsing Python code:", error);
+                return { error: error.message };
+            }
+        }
+        
+        // Handle file selection
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.name.endsWith('.py')) {
+                console.log(`Selected file: ${file.name}`);
+            }
+        });
+        
+        // Handle parse button click
+        document.getElementById('parse-btn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                document.getElementById('output').textContent = 'Please select a Python file first.';
+                return;
+            }
+            
+            if (!file.name.endsWith('.py')) {
+                document.getElementById('output').textContent = 'Please select a valid Python file (.py).';
+                return;
+            }
+            
+            // Read file content
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const content = e.target.result;
+                
+                document.getElementById('loader').style.display = 'block';
+                document.getElementById('output').textContent = 'Parsing...';
+                
+                try {
+                    // Initialize Pyodide if not already done
+                    if (!pyodideReady) {
+                        await initializePyodide();
+                    }
+                    
+                    // Parse the Python code
+                    const result = await parsePythonCode(content, file.name);
+                    
+                    // Display the result
+                    document.getElementById('output').textContent = JSON.stringify(result, null, 2);
+                } catch (error) {
+                    console.error("Error:", error);
+                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                } finally {
+                    document.getElementById('loader').style.display = 'none';
+                }
+            };
+            
+            reader.onerror = function(e) {
+                document.getElementById('output').textContent = `Error reading file: ${e.target.error}`;
+            };
+            
+            reader.readAsText(file);
+        });
+        
+        // Initialize Pyodide when the page loads
+        window.addEventListener('load', initializePyodide);
+    </script>
+</body>
+</html>

@@ -337,6 +337,132 @@ header h1::after {
     margin-bottom: 20px;
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+/* GitHub Repository Input Styles */
+.github-input {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: var(--darker-bg);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+}
+
+.github-input h3 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: var(--text-color);
+    position: relative;
+    padding-bottom: 8px;
+}
+
+.github-input h3::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background-color: var(--magenta-primary);
+    border-radius: var(--radius-sm);
+}
+
+.github-input-container {
+    display: flex;
+    gap: 10px;
+}
+
+.github-input-container input[type="text"] {
+    flex: 1;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    transition: all var(--transition-medium);
+}
+
+.github-input-container input[type="text"]:focus {
+    outline: none;
+    border-color: var(--magenta-primary);
+    box-shadow: 0 0 0 2px rgba(232, 62, 140, 0.3);
+}
+
+.github-input-container input[type="text"]::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.repo-info {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: var(--card-bg);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--magenta-primary);
+}
+
+.repo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.repo-header h4 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 1rem;
+}
+
+.repo-stats {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.repo-stats span {
+    font-weight: bold;
+    color: var(--magenta-primary);
+    margin-left: 10px;
+}
+
+.repo-stats span:first-child {
+    margin-left: 0;
+}
+
+#repo-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 5px 0 0 0;
+}
+
+/* Loading indicator */
+.loading-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 10px;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(232, 62, 140, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--magenta-primary);
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+#loading-text {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
 }
 
 #analyze-btn {
@@ -956,6 +1082,7 @@ footer::before {
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
     overflow: auto;
+    -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
 }
 

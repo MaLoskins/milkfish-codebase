@@ -809,7 +809,300 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add demo functionality
     setupDemoButton();
+    
+    // Set up GitHub repository integration
+    setupGitHubIntegration();
 });
+
+/**
+ * Set up GitHub repository integration
+ */
+function setupGitHubIntegration() {
+    // Get GitHub elements
+    const githubRepoUrl = document.getElementById('github-repo-url');
+    const githubFetchBtn = document.getElementById('github-fetch-btn');
+    const repoInfo = document.getElementById('repo-info');
+    const repoName = document.getElementById('repo-name');
+    const repoStars = document.getElementById('repo-stars');
+    const repoForks = document.getElementById('repo-forks');
+    const repoDescription = document.getElementById('repo-description');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    
+    // Check if elements exist
+    if (!githubFetchBtn || !githubRepoUrl) {
+        console.error('GitHub elements not found in the DOM');
+        return;
+    }
+    
+    // Check if GitHub integration script is loaded
+    if (typeof githubIntegration === 'undefined') {
+        console.error('GitHub integration script not loaded');
+        return;
+    }
+    
+    // Handle GitHub fetch button click
+    githubFetchBtn.addEventListener('click', async function() {
+        const url = githubRepoUrl.value.trim();
+        
+        if (!url) {
+            showNotification('Please enter a GitHub repository URL', true);
+            return;
+        }
+        
+        try {
+            // Show loading indicator
+            loadingIndicator.style.display = 'flex';
+            githubFetchBtn.disabled = true;
+            // Clear any previous selection
+            // We can't directly call the clearFileSelection function as it's in a different scope
+            // So we'll simulate it by clearing the file list and disabling buttons
+            document.getElementById('file-list').innerHTML = '<li>No Python files selected</li>';
+            document.getElementById('python-file-count').textContent = '0';
+            document.getElementById('analyze-btn').disabled = true;
+            document.getElementById('clear-selection-btn').disabled = true;
+            
+            // Define constants for file limits (same as in the main scope)
+            const MAX_FILE_COUNT = 300;
+            const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+            
+            // Process the repository
+            const result = await githubIntegration.processRepository(url, MAX_FILE_COUNT, MAX_TOTAL_SIZE);
+            
+            
+            // Display repository information
+            displayRepositoryInfo(result.metadata, repoName, repoStars, repoForks, repoDescription, repoInfo);
+            
+            // Check if repository exceeds limits
+            if (result.exceedsFileCountLimit) {
+                showNotification(`Repository has too many Python files (${result.fileCount}). Maximum allowed is ${MAX_FILE_COUNT}.`, true);
+                loadingIndicator.style.display = 'none';
+                githubFetchBtn.disabled = false;
+                return;
+            }
+            
+            if (result.exceedsLimit) {
+                const totalSizeMB = (result.totalSize / (1024 * 1024)).toFixed(2);
+                const maxSizeMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(0);
+                showNotification(`Repository size (${totalSizeMB}MB) exceeds the maximum limit of ${maxSizeMB}MB.`, true);
+                loadingIndicator.style.display = 'none';
+                githubFetchBtn.disabled = false;
+                return;
+            }
+            
+            // Check if we need to show subdirectory selection
+            if (result.subdirectories.length > 1 && result.fileCount > MAX_FILE_COUNT / 2) {
+                // Show subdirectory selection modal
+                showGitHubSubdirectoryModal(result.subdirectories, loadingIndicator);
+            } else {
+                // Process all files
+                await processGitHubFiles(loadingIndicator);
+            }
+            
+        } catch (error) {
+            console.error('Error processing GitHub repository:', error);
+            showNotification(`Error: ${error.message}`, true);
+        } finally {
+            // Hide loading indicator
+            loadingIndicator.style.display = 'none';
+            githubFetchBtn.disabled = false;
+        }
+    });
+}
+
+/**
+ * Display repository information
+ * @param {Object} metadata - Repository metadata from GitHub API
+ * @param {HTMLElement} nameElement - Repository name element
+ * @param {HTMLElement} starsElement - Stars count element
+ * @param {HTMLElement} forksElement - Forks count element
+ * @param {HTMLElement} descriptionElement - Description element
+ * @param {HTMLElement} infoContainer - Repository info container
+ */
+function displayRepositoryInfo(metadata, nameElement, starsElement, forksElement, descriptionElement, infoContainer) {
+    nameElement.textContent = metadata.name;
+    starsElement.textContent = metadata.stargazers_count.toLocaleString();
+    forksElement.textContent = metadata.forks_count.toLocaleString();
+    descriptionElement.textContent = metadata.description || 'No description available';
+    
+    // Show repository info section
+    infoContainer.style.display = 'block';
+}
+
+/**
+ * Show subdirectory selection modal for GitHub repositories
+ * @param {Array} subdirectories - Array of subdirectory names
+ * @param {HTMLElement} loadingIndicator - Loading indicator element
+ */
+function showGitHubSubdirectoryModal(subdirectories, loadingIndicator) {
+    const modal = document.getElementById('subdirectory-modal');
+    const subdirList = document.getElementById('subdirectory-list');
+    const closeBtn = document.querySelector('.close-modal');
+    const confirmBtn = document.getElementById('confirm-subdirectory-btn');
+    const cancelBtn = document.getElementById('cancel-subdirectory-btn');
+    const ignoreCommonBtn = document.getElementById('ignore-common-btn');
+    
+    // Clear previous list
+    subdirList.innerHTML = '';
+    
+    // Add checkboxes for each subdirectory
+    subdirectories.forEach(dir => {
+        const item = document.createElement('div');
+        item.className = 'checkbox-item';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `dir-${dir}`;
+        checkbox.value = dir;
+        checkbox.checked = true; // Initially select all
+        
+        const label = document.createElement('label');
+        label.htmlFor = `dir-${dir}`;
+        label.textContent = dir;
+        
+        item.appendChild(checkbox);
+        item.appendChild(label);
+        subdirList.appendChild(item);
+    });
+    
+    // Show the modal
+    modal.style.display = 'block';
+    
+    // Close modal when clicking the X
+    closeBtn.onclick = function() {
+        modal.style.display = 'none';
+    };
+    
+    // Handle ignore common directories button
+    ignoreCommonBtn.onclick = function() {
+        // Define common directories to ignore (same as in the main scope)
+        const COMMON_IGNORE_DIRS = [
+            '.venv', 'venv', 'env',
+            'node_modules',
+            '__pycache__',
+            '.git', '.github',
+            'build', 'dist',
+            '.idea', '.vscode',
+            'tests', 'test'
+        ];
+        
+        // Implement ignore common directories functionality
+        const checkboxes = subdirList.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            if (COMMON_IGNORE_DIRS.some(ignoreDir =>
+                checkbox.value.toLowerCase().includes(ignoreDir.toLowerCase()))) {
+                checkbox.checked = false;
+            }
+        });
+    };
+    
+    // Handle confirm button
+    confirmBtn.onclick = async function() {
+        const selectedDirs = [];
+        const checkboxes = subdirList.querySelectorAll('input[type="checkbox"]');
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedDirs.push(checkbox.value);
+            }
+        });
+        
+        if (selectedDirs.length === 0) {
+            showNotification('Please select at least one subdirectory', true);
+            return;
+        }
+        
+        // Show loading indicator
+        loadingIndicator.style.display = 'flex';
+        
+        try {
+            // Define constants for file limits (same as in the main scope)
+            const MAX_FILE_COUNT = 300;
+            const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+            
+            // Process selected directories
+            await githubIntegration.processSelectedDirectories(selectedDirs, MAX_FILE_COUNT, MAX_TOTAL_SIZE);
+            
+            // Process files
+            await processGitHubFiles(loadingIndicator);
+            
+            // Close modal
+            modal.style.display = 'none';
+        } catch (error) {
+            console.error('Error processing selected directories:', error);
+            showNotification(`Error: ${error.message}`, true);
+        } finally {
+            // Hide loading indicator
+            loadingIndicator.style.display = 'none';
+        }
+    };
+    
+    // Handle cancel button
+    cancelBtn.onclick = function() {
+        // Close modal without processing
+        modal.style.display = 'none';
+    };
+}
+
+/**
+ * Process GitHub files and update UI
+ * @param {HTMLElement} loadingIndicator - Loading indicator element
+ */
+async function processGitHubFiles(loadingIndicator) {
+    try {
+        // Show loading notification
+        showNotification('Preparing files for analysis...');
+        
+        // Convert GitHub files to File objects
+        const fileObjects = await githubIntegration.prepareFilesForAnalysis();
+        
+        if (fileObjects.length === 0) {
+            showNotification('No Python files found in the repository', true);
+            return;
+        }
+        // We can't directly call addFilesToCollection as it's in a different scope
+        // Instead, we'll display the files in the file list and enable the analyze button
+        const fileList = document.getElementById('file-list');
+        fileList.innerHTML = '';
+        
+        // Display files in the list
+        const header = document.createElement('li');
+        header.innerHTML = '<strong>GitHub Repository Files</strong>';
+        fileList.appendChild(header);
+        
+        fileObjects.forEach(file => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            li.textContent = file.webkitRelativePath || file.name;
+            fileList.appendChild(li);
+        });
+        
+        // Update file count display
+        document.getElementById('python-file-count').textContent = fileObjects.length;
+        
+        // Enable the analyze button
+        const analyzeButton = document.getElementById('analyze-btn');
+        if (analyzeButton) {
+            analyzeButton.disabled = false;
+        }
+        
+        
+        // Automatically trigger analysis
+        const analyzeBtn = document.getElementById('analyze-btn');
+        if (fileObjects.length > 0 && analyzeBtn && !analyzeBtn.disabled) {
+            showNotification(`Analyzing ${fileObjects.length} Python files from GitHub repository...`);
+            // Parse files and generate graph
+            const graphData = await pythonParser.parseFiles(fileObjects);
+            graphVisualizer.update(graphData);
+            
+            
+            // Show success notification
+            showNotification('GitHub repository analysis complete!');
+        }
+    } catch (error) {
+        console.error('Error processing GitHub files:', error);
+        showNotification(`Error: ${error.message}`, true);
+    }
+}
 
 /**
  * Set up demo button to load sample Python code
