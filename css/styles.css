@@ -724,7 +724,7 @@ header h1::after {
 
 #visualization {
     width: 100%;
-    height: 800px;
+    height: 890px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background-color: var(--darker-bg);
