@@ -7,7 +7,6 @@
 A sleek, lightweight visualization tool that transforms your Python codebase into an interactive network graph, revealing connections between files, classes, methods, and functions. Perfect for identifying "floating nodes" – forgotten or unrealized components in your projects.
 
 ![Python Codebase Graph Visualizer Demo](./examples/dashboard.png)
-![Python Codebase Graph Visualizer Demo 2](examples/dashboard_selected.png)
 ![Python Codebase Graph Visualizer Selected Node Details](./examples/details.png)
 
 ## 🚀 Features
