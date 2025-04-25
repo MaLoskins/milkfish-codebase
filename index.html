@@ -13,6 +13,14 @@
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <img src="MilkFishLoadingScreen.png" alt="MilkFish Loading">
+        <div class="loading-text">Loading Codebase Visualizer...</div>
+        <div class="spinner"></div>
+        <!-- Audio element for fish sound -->
+        <audio id="fish-sound" src="rekintudu-27867.mp3" preload="auto"></audio>
+    </div>
     <header>
         <div class="header-content">
             <img src="logo.png" alt="MilkFish Logo" class="header-logo">
@@ -182,20 +190,63 @@
     <script>
         // Preload Pyodide in the background to improve user experience
         document.addEventListener('DOMContentLoaded', function() {
+            console.log("Setting up Pyodide loading");
+            
+            // Function to hide loading screen
+            function hideLoadingScreen() {
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) {
+                    console.log("Hiding loading screen after Pyodide load");
+                    loadingScreen.classList.add('fade-out');
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 1500);
+                }
+            }
+            
+            // Function to play fish sound
+            function playFishSound() {
+                const fishSound = document.getElementById('fish-sound');
+                if (fishSound) {
+                    console.log("Playing fish sound for Pyodide loading");
+                    fishSound.currentTime = 0;
+                    fishSound.muted = false;
+                    fishSound.volume = 1.0;
+                    
+                    // Try to play the sound
+                    fishSound.play()
+                        .then(() => console.log("Fish sound playing for Pyodide"))
+                        .catch(error => console.warn("Could not play fish sound:", error));
+                }
+            }
+            
             // Only load Pyodide if it's not already loaded
             if (typeof loadPyodide === 'function' && !window.pyodideLoaded) {
                 console.log("Preloading Pyodide...");
+                
+                // Play fish sound when Pyodide starts loading
+                playFishSound();
+                
                 try {
                     loadPyodide().then(pyodide => {
                         console.log("Pyodide preloaded successfully");
                         window.pyodideLoaded = true;
                         window.pyodideInstance = pyodide;
+                        
+                        // Hide loading screen when Pyodide is loaded
+                        hideLoadingScreen();
                     }).catch(error => {
                         console.error("Failed to preload Pyodide:", error);
+                        hideLoadingScreen();
                     });
                 } catch (error) {
                     console.error("Error preloading Pyodide:", error);
+                    hideLoadingScreen();
                 }
+            } else {
+                // If Pyodide is already loaded or not available, hide loading screen
+                console.log("Pyodide already loaded or not available");
+                hideLoadingScreen();
             }
         });
     </script>

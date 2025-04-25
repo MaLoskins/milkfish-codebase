@@ -2,6 +2,63 @@
  * Main Application Script
  * Handles user interactions and coordinates between components
  */
+
+// Play fish sound and show loading screen immediately
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded - initializing loading screen");
+    
+    // Get elements
+    const loadingScreen = document.getElementById('loading-screen');
+    const fishSound = document.getElementById('fish-sound');
+    
+    // Play fish sound immediately
+    if (fishSound) {
+        console.log("Attempting to play fish sound");
+        
+        // Force sound to be unmuted and at full volume
+        fishSound.muted = false;
+        fishSound.volume = 1.0;
+        
+        // Play the sound directly
+        fishSound.play()
+            .then(() => console.log("Fish sound playing successfully"))
+            .catch(error => {
+                console.error("Could not autoplay fish sound:", error);
+                
+                // Add a click handler to play sound on first user interaction
+                document.body.addEventListener('click', function playOnClick() {
+                    fishSound.play();
+                    document.body.removeEventListener('click', playOnClick);
+                }, { once: true });
+            });
+    } else {
+        console.error("Fish sound element not found");
+    }
+    
+    // Fallback: Hide loading screen after a maximum timeout (10 seconds)
+    if (loadingScreen) {
+        setTimeout(() => {
+            console.log("Hiding loading screen after timeout");
+            loadingScreen.classList.add('fade-out');
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 1500);
+        }, 10000);
+    }
+});
+
+// Also try playing on window load
+window.addEventListener('load', function() {
+    console.log("Window loaded - trying to play sound again");
+    const fishSound = document.getElementById('fish-sound');
+    if (fishSound) {
+        fishSound.currentTime = 0;
+        fishSound.play()
+            .then(() => console.log("Fish sound playing on window load"))
+            .catch(e => console.warn("Could not play fish sound on window load:", e));
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     // Elements
     const fileInput = document.getElementById('file-input');
