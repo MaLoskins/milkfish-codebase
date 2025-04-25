@@ -45,7 +45,7 @@ A sleek, lightweight visualization tool that transforms your Python codebase int
 
 Developed by [me](https://maloskins.pages.dev/cv) to assist in identifying forgotten components of a model framework I was working on, this tool emerged from my research in Geometric Neural Networks, wondering why graph networks were not used diagnostically or as ubiquitously as I would have anticipated. I needed a way to quality-check code from a more holistic perspective, identifying seeing relationships that aren't immediately obvious when looking at individual files. 
 
-I am aware similar tools exist but they are often convoluted and dont have magenta highlights in their application 🤡.
+I am aware similar tools exist but they are often convoluted and dont have magenta highlights or cool fish noises.
 
 
 ## 💻 Technical Details
