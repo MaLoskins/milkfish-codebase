@@ -1,6 +1,6 @@
 /**
- * Python Code Parser
- * Parses Python code to extract classes, functions, imports, etc.
+ * Enhanced Python Code Parser
+ * Parses Python code to extract classes, functions, imports, and advanced metrics
  * Uses Pyodide to leverage Python's AST module for accurate parsing
  */
 class PythonParser {
@@ -9,10 +9,13 @@ class PythonParser {
         this.links = [];
         this.nodeMap = {};
         this.nodeIndex = 0;
-        this.pythonFiles = new Set(); // Track Python file names
-        this.filePathMap = {}; // Map to track filenames and their full paths
+        this.pythonFiles = new Set();
+        this.filePathMap = {};
         this.pyodideReady = false;
         this.pyodide = null;
+        this.metrics = {}; // Store code metrics
+        this.docstrings = {}; // Store docstrings
+        this.testFiles = new Set(); // Track test files
         this.initializePyodide();
     }
 
@@ -23,98 +26,410 @@ class PythonParser {
         try {
             console.log("Loading Pyodide...");
             this.pyodide = await loadPyodide();
-            // Load micropip to install packages
             await this.pyodide.loadPackage("micropip");
             const micropip = this.pyodide.pyimport("micropip");
             
-            // Import standard libraries
             await this.pyodide.runPythonAsync(`
                 import sys
                 import json
-            `);
-            
-            // Define Python functions for AST parsing
-            // Define Python functions for AST parsing
-            await this.pyodide.runPythonAsync(`
                 import ast
+                import re
                 
-                def parse_python_code(code, filename):
-                    """
-                    Parse Python code using the AST module and extract information about
-                    classes, functions, methods, and imports.
+                class CodeAnalyzer(ast.NodeVisitor):
+                    """Advanced Python code analyzer using AST"""
                     
-                    Args:
-                        code (str): Python code to parse
-                        filename (str): Name of the file being parsed
+                    def __init__(self):
+                        self.imports = []
+                        self.from_imports = []
+                        self.classes = []
+                        self.functions = []
+                        self.metrics = {
+                            'lines_of_code': 0,
+                            'lines_of_comments': 0,
+                            'cyclomatic_complexity': 1,
+                            'max_nesting_depth': 0,
+                            'function_count': 0,
+                            'class_count': 0,
+                            'has_docstrings': False,
+                            'test_count': 0,
+                            'assertion_count': 0,
+                            'global_variables': [],
+                            'constants': [],
+                            'type_annotations': 0,
+                            'decorators': []
+                        }
+                        self.current_depth = 0
+                        self.docstrings = {}
+                        self.todo_comments = []
+                        self.function_calls = {}
+                        self.unused_imports = set()
+                        self.used_names = set()
+                    
+                    def visit_Import(self, node):
+                        for alias in node.names:
+                            self.imports.append({
+                                'name': alias.name,
+                                'asname': alias.asname,
+                                'line': node.lineno
+                            })
+                            if alias.asname:
+                                self.unused_imports.add(alias.asname)
+                            else:
+                                self.unused_imports.add(alias.name.split('.')[0])
+                        self.generic_visit(node)
+                    
+                    def visit_ImportFrom(self, node):
+                        module = node.module or ''
+                        for alias in node.names:
+                            self.from_imports.append({
+                                'module': module,
+                                'name': alias.name,
+                                'asname': alias.asname,
+                                'line': node.lineno
+                            })
+                            if alias.name != '*':
+                                if alias.asname:
+                                    self.unused_imports.add(alias.asname)
+                                else:
+                                    self.unused_imports.add(alias.name)
+                        self.generic_visit(node)
+                    
+                    def visit_ClassDef(self, node):
+                        self.metrics['class_count'] += 1
                         
-                    Returns:
-                        dict: Dictionary containing extracted information
-                    """
-                    try:
-                        # Parse the code into an AST
-                        tree = ast.parse(code, filename=filename)
+                        # Extract class docstring
+                        docstring = ast.get_docstring(node)
+                        if docstring:
+                            self.docstrings[node.name] = docstring
+                            self.metrics['has_docstrings'] = True
                         
-                        # Initialize result structure
-                        result = {
-                            'imports': [],
-                            'from_imports': [],
-                            'classes': [],
-                            'functions': []
+                        # Extract decorators
+                        decorators = [self._get_decorator_name(d) for d in node.decorator_list]
+                        
+                        class_info = {
+                            'name': node.name,
+                            'bases': [self._get_name(base) for base in node.bases],
+                            'methods': [],
+                            'properties': [],
+                            'class_variables': [],
+                            'lineno': node.lineno,
+                            'end_lineno': getattr(node, 'end_lineno', node.lineno),
+                            'decorators': decorators,
+                            'docstring': docstring,
+                            'is_abstract': any('ABC' in self._get_name(base) for base in node.bases),
+                            'complexity': 0
                         }
                         
-                        # Process all nodes in the AST
-                        for node in ast.walk(tree):
-                            # Extract imports
-                            if isinstance(node, ast.Import):
-                                for name in node.names:
-                                    result['imports'].append({
-                                        'name': name.name,
-                                        'asname': name.asname
-                                    })
-                            
-                            # Extract from imports
-                            elif isinstance(node, ast.ImportFrom):
-                                module = node.module or ''
-                                for name in node.names:
-                                    result['from_imports'].append({
-                                        'module': module,
-                                        'name': name.name,
-                                        'asname': name.asname
-                                    })
-                            
-                            # Extract classes
-                            elif isinstance(node, ast.ClassDef):
-                                class_info = {
-                                    'name': node.name,
-                                    'bases': [self._get_name(base) for base in node.bases],
-                                    'methods': [],
-                                    'lineno': node.lineno,
-                                    'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
-                                }
-                                
-                                # Extract methods
-                                for item in node.body:
-                                    if isinstance(item, ast.FunctionDef):
-                                        method_info = self._extract_function_info(item)
-                                        method_info['parent_class'] = node.name
-                                        class_info['methods'].append(method_info)
-                                
-                                result['classes'].append(class_info)
-                            
-                            # Extract top-level functions
-                            elif isinstance(node, ast.FunctionDef) and isinstance(node.parent, ast.Module):
-                                func_info = self._extract_function_info(node)
-                                result['functions'].append(func_info)
+                        # Visit class body
+                        old_depth = self.current_depth
+                        self.current_depth += 1
                         
-                        return result
+                        for item in node.body:
+                            if isinstance(item, ast.FunctionDef):
+                                method_info = self._extract_function_info(item, is_method=True)
+                                method_info['parent_class'] = node.name
+                                
+                                # Check if it's a property
+                                if any(d == 'property' for d in method_info['decorators']):
+                                    class_info['properties'].append(method_info['name'])
+                                else:
+                                    class_info['methods'].append(method_info)
+                                    
+                                class_info['complexity'] += method_info['complexity']
+                            
+                            elif isinstance(item, ast.Assign):
+                                # Class variables
+                                for target in item.targets:
+                                    if isinstance(target, ast.Name):
+                                        class_info['class_variables'].append(target.id)
+                        
+                        self.current_depth = old_depth
+                        self.classes.append(class_info)
+                        self.generic_visit(node)
+                    
+                    def visit_FunctionDef(self, node):
+                        # Only process top-level functions
+                        if isinstance(node.parent, ast.Module):
+                            func_info = self._extract_function_info(node)
+                            self.functions.append(func_info)
+                            
+                            # Check if it's a test function
+                            if node.name.startswith('test_') or node.name.endswith('_test'):
+                                self.metrics['test_count'] += 1
+                        
+                        self.generic_visit(node)
+                    
+                    def visit_Name(self, node):
+                        # Track used names to identify unused imports
+                        if isinstance(node.ctx, (ast.Load, ast.Store)):
+                            self.used_names.add(node.id)
+                        self.generic_visit(node)
+                    
+                    def visit_Attribute(self, node):
+                        # Track attribute access
+                        if isinstance(node.ctx, ast.Load):
+                            base_name = self._get_base_name(node)
+                            if base_name:
+                                self.used_names.add(base_name)
+                        self.generic_visit(node)
+                    
+                    def visit_If(self, node):
+                        self.metrics['cyclomatic_complexity'] += 1
+                        self._update_depth()
+                        self.generic_visit(node)
+                    
+                    def visit_While(self, node):
+                        self.metrics['cyclomatic_complexity'] += 1
+                        self._update_depth()
+                        self.generic_visit(node)
+                    
+                    def visit_For(self, node):
+                        self.metrics['cyclomatic_complexity'] += 1
+                        self._update_depth()
+                        self.generic_visit(node)
+                    
+                    def visit_ExceptHandler(self, node):
+                        self.metrics['cyclomatic_complexity'] += 1
+                        self.generic_visit(node)
+                    
+                    def visit_Assert(self, node):
+                        self.metrics['assertion_count'] += 1
+                        self.generic_visit(node)
+                    
+                    def visit_Global(self, node):
+                        self.metrics['global_variables'].extend(node.names)
+                        self.generic_visit(node)
+                    
+                    def visit_AnnAssign(self, node):
+                        # Type annotations
+                        self.metrics['type_annotations'] += 1
+                        self.generic_visit(node)
+                    
+                    def _update_depth(self):
+                        self.metrics['max_nesting_depth'] = max(
+                            self.metrics['max_nesting_depth'],
+                            self.current_depth
+                        )
+                    
+                    def _get_name(self, node):
+                        """Extract name from various AST node types"""
+                        if isinstance(node, ast.Name):
+                            return node.id
+                        elif isinstance(node, ast.Attribute):
+                            return f"{self._get_name(node.value)}.{node.attr}"
+                        elif isinstance(node, ast.Call):
+                            return self._get_name(node.func)
+                        elif isinstance(node, ast.Subscript):
+                            return self._get_name(node.value)
+                        elif isinstance(node, str):
+                            return node
+                        else:
+                            return str(type(node).__name__)
+                    
+                    def _get_base_name(self, node):
+                        """Get the base name from an attribute chain"""
+                        if isinstance(node, ast.Name):
+                            return node.id
+                        elif isinstance(node, ast.Attribute):
+                            return self._get_base_name(node.value)
+                        return None
+                    
+                    def _get_decorator_name(self, node):
+                        """Extract decorator name"""
+                        if isinstance(node, ast.Name):
+                            return node.id
+                        elif isinstance(node, ast.Attribute):
+                            return node.attr
+                        elif isinstance(node, ast.Call):
+                            return self._get_decorator_name(node.func)
+                        return str(node)
+                    
+                    def _extract_function_info(self, node, is_method=False):
+                        """Extract detailed function/method information"""
+                        self.metrics['function_count'] += 1
+                        
+                        # Get docstring
+                        docstring = ast.get_docstring(node)
+                        if docstring:
+                            self.docstrings[node.name] = docstring
+                            self.metrics['has_docstrings'] = True
+                        
+                        # Extract decorators
+                        decorators = [self._get_decorator_name(d) for d in node.decorator_list]
+                        self.metrics['decorators'].extend(decorators)
+                        
+                        # Extract parameters with type annotations
+                        params = []
+                        for arg in node.args.args:
+                            param_info = {'name': arg.arg}
+                            if arg.annotation:
+                                param_info['type'] = self._get_name(arg.annotation)
+                                self.metrics['type_annotations'] += 1
+                            params.append(param_info)
+                        
+                        # Extract return type annotation
+                        return_type = None
+                        if node.returns:
+                            return_type = self._get_name(node.returns)
+                            self.metrics['type_annotations'] += 1
+                        
+                        # Calculate function complexity
+                        complexity = self._calculate_function_complexity(node)
+                        
+                        # Extract function calls
+                        function_calls = self._extract_function_calls(node)
+                        
+                        return {
+                            'name': node.name,
+                            'params': params,
+                            'decorators': decorators,
+                            'docstring': docstring,
+                            'return_type': return_type,
+                            'lineno': node.lineno,
+                            'end_lineno': getattr(node, 'end_lineno', node.lineno),
+                            'complexity': complexity,
+                            'function_calls': function_calls,
+                            'is_async': isinstance(node, ast.AsyncFunctionDef),
+                            'is_generator': self._is_generator(node),
+                            'is_method': is_method,
+                            'is_static': 'staticmethod' in decorators,
+                            'is_class_method': 'classmethod' in decorators,
+                            'is_property': 'property' in decorators
+                        }
+                    
+                    def _calculate_function_complexity(self, node):
+                        """Calculate cyclomatic complexity for a function"""
+                        complexity = 1
+                        for child in ast.walk(node):
+                            if isinstance(child, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
+                                complexity += 1
+                            elif isinstance(child, ast.BoolOp):
+                                complexity += len(child.values) - 1
+                        return complexity
+                    
+                    def _extract_function_calls(self, node):
+                        """Extract all function calls within a function"""
+                        calls = []
+                        for child in ast.walk(node):
+                            if isinstance(child, ast.Call):
+                                call_name = self._get_name(child.func)
+                                if call_name and not call_name.startswith('_'):
+                                    calls.append(call_name)
+                        return list(set(calls))
+                    
+                    def _is_generator(self, node):
+                        """Check if function is a generator"""
+                        for child in ast.walk(node):
+                            if isinstance(child, (ast.Yield, ast.YieldFrom)):
+                                return True
+                        return False
+                    
+                    def finalize_analysis(self):
+                        """Finalize analysis and clean up data"""
+                        # Remove used imports from unused_imports set
+                        self.unused_imports = self.unused_imports - self.used_names
+                        
+                        # Convert sets to lists for JSON serialization
+                        self.metrics['unused_imports'] = list(self.unused_imports)
+                        
+                        # Calculate code quality score
+                        self.metrics['quality_score'] = self._calculate_quality_score()
+                    
+                    def _calculate_quality_score(self):
+                        """Calculate a code quality score based on various metrics"""
+                        score = 100
+                        
+                        # Penalize for complexity
+                        if self.metrics['cyclomatic_complexity'] > 10:
+                            score -= min(20, (self.metrics['cyclomatic_complexity'] - 10) * 2)
+                        
+                        # Penalize for deep nesting
+                        if self.metrics['max_nesting_depth'] > 4:
+                            score -= min(15, (self.metrics['max_nesting_depth'] - 4) * 5)
+                        
+                        # Reward for docstrings
+                        if not self.metrics['has_docstrings']:
+                            score -= 10
+                        
+                        # Reward for type annotations
+                        if self.metrics['function_count'] > 0:
+                            annotation_ratio = self.metrics['type_annotations'] / self.metrics['function_count']
+                            score += min(10, int(annotation_ratio * 10))
+                        
+                        # Penalize for unused imports
+                        if self.metrics['unused_imports']:
+                            score -= min(10, len(self.metrics['unused_imports']) * 2)
+                        
+                        return max(0, score)
+                
+                def parse_python_code(code, filename):
+                    """Parse Python code and extract comprehensive information"""
+                    try:
+                        # Parse code into AST
+                        tree = ast.parse(code, filename=filename)
+                        
+                        # Add parent references
+                        for node in ast.walk(tree):
+                            for child in ast.iter_child_nodes(node):
+                                child.parent = node
+                        
+                        # Count lines
+                        lines = code.split('\\n')
+                        total_lines = len(lines)
+                        comment_lines = sum(1 for line in lines if line.strip().startswith('#'))
+                        blank_lines = sum(1 for line in lines if not line.strip())
+                        code_lines = total_lines - comment_lines - blank_lines
+                        
+                        # Analyze with visitor
+                        analyzer = CodeAnalyzer()
+                        analyzer.metrics['total_lines'] = total_lines
+                        analyzer.metrics['lines_of_code'] = code_lines
+                        analyzer.metrics['lines_of_comments'] = comment_lines
+                        analyzer.metrics['blank_lines'] = blank_lines
+                        
+                        # Check if it's a test file
+                        is_test_file = ('test_' in filename.lower() or 
+                                       '_test' in filename.lower() or
+                                       '/test' in filename.lower() or
+                                       '\\\\test' in filename.lower())
+                        
+                        analyzer.visit(tree)
+                        analyzer.finalize_analysis()
+                        
+                        # Find TODO comments
+                        todo_pattern = re.compile(r'#\\s*(TODO|FIXME|XXX|HACK|BUG):\\s*(.+)', re.IGNORECASE)
+                        for i, line in enumerate(lines, 1):
+                            match = todo_pattern.search(line)
+                            if match:
+                                analyzer.todo_comments.append({
+                                    'type': match.group(1).upper(),
+                                    'message': match.group(2).strip(),
+                                    'line': i
+                                })
+                        
+                        return {
+                            'imports': analyzer.imports,
+                            'from_imports': analyzer.from_imports,
+                            'classes': analyzer.classes,
+                            'functions': analyzer.functions,
+                            'metrics': analyzer.metrics,
+                            'docstrings': analyzer.docstrings,
+                            'todo_comments': analyzer.todo_comments,
+                            'is_test_file': is_test_file
+                        }
                     
                     except SyntaxError as e:
                         return {
                             'error': f"Syntax error in {filename}: {str(e)}",
+                            'line': e.lineno,
                             'imports': [],
                             'from_imports': [],
                             'classes': [],
-                            'functions': []
+                            'functions': [],
+                            'metrics': {},
+                            'docstrings': {},
+                            'todo_comments': [],
+                            'is_test_file': False
                         }
                     except Exception as e:
                         return {
@@ -122,66 +437,18 @@ class PythonParser {
                             'imports': [],
                             'from_imports': [],
                             'classes': [],
-                            'functions': []
+                            'functions': [],
+                            'metrics': {},
+                            'docstrings': {},
+                            'todo_comments': [],
+                            'is_test_file': False
                         }
-                
-                def _get_name(node):
-                    """Extract name from an AST node"""
-                    if isinstance(node, ast.Name):
-                        return node.id
-                    elif isinstance(node, ast.Attribute):
-                        return f"{self._get_name(node.value)}.{node.attr}"
-                    elif isinstance(node, ast.Call):
-                        return self._get_name(node.func)
-                    elif isinstance(node, ast.Subscript):
-                        return self._get_name(node.value)
-                    else:
-                        return str(node)
-                
-                def _extract_function_info(node):
-                    """Extract information about a function or method"""
-                    # Get function arguments
-                    args = []
-                    for arg in node.args.args:
-                        args.append(arg.arg)
-                    
-                    # Extract function calls within the function body
-                    function_calls = []
-                    for item in ast.walk(node):
-                        if isinstance(item, ast.Call):
-                            call_name = self._get_name(item.func)
-                            function_calls.append(call_name)
-                    
-                    # Create function info dictionary
-                    return {
-                        'name': node.name,
-                        'args': args,
-                        'function_calls': function_calls,
-                        'lineno': node.lineno,
-                        'end_lineno': node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
-                    }
-                
-                # Add parent references to AST nodes (needed for context)
-                def add_parent_refs(tree):
-                    for node in ast.walk(tree):
-                        for child in ast.iter_child_nodes(node):
-                            child.parent = node
-                    return tree
-                
-                # Override ast.parse to add parent references
-                original_parse = ast.parse
-                def parse_with_parent_refs(*args, **kwargs):
-                    tree = original_parse(*args, **kwargs)
-                    return add_parent_refs(tree)
-                
-                ast.parse = parse_with_parent_refs
             `);
             
             this.pyodideReady = true;
-            console.log("Pyodide initialized successfully");
+            console.log("Pyodide initialized successfully with advanced analysis");
         } catch (error) {
             console.error("Failed to initialize Pyodide:", error);
-            // Fallback to regex-based parsing if Pyodide fails to load
             this.pyodideReady = false;
         }
     }
@@ -199,6 +466,9 @@ class PythonParser {
         this.nodeIndex = 0;
         this.pythonFiles.clear();
         this.filePathMap = {};
+        this.metrics = {};
+        this.docstrings = {};
+        this.testFiles.clear();
         
         // Make sure Pyodide is ready
         if (!this.pyodideReady) {
@@ -206,47 +476,63 @@ class PythonParser {
                 await this.initializePyodide();
             } catch (error) {
                 console.error("Could not initialize Pyodide:", error);
-                // Continue with regex-based parsing as fallback
             }
         }
-        // Reset parser state
-        this.nodes = [];
-        this.links = [];
-        this.nodeMap = {};
-        this.nodeIndex = 0;
-        this.pythonFiles.clear();
-        this.filePathMap = {};
         
         // First, collect all Python file names
         for (const file of files) {
             if (file.name.endsWith('.py')) {
-                // Store the file name without extension for module matching
                 const moduleName = file.name.replace('.py', '');
                 this.pythonFiles.add(moduleName);
+                
+                // Check if it's a test file
+                if (file.name.includes('test_') || file.name.includes('_test')) {
+                    this.testFiles.add(file.name);
+                }
             }
         }
         
         // Parse each Python file
+        const totalFiles = files.length;
+        let processedFiles = 0;
+        
         for (const file of files) {
             if (file.name.endsWith('.py')) {
                 const content = await this.readFile(file);
                 const filepath = file.webkitRelativePath || file.name;
-                this.parseFile(file.name, content, filepath);
+                await this.parseFile(file.name, content, filepath);
+                
+                processedFiles++;
+                // Dispatch progress event
+                this.dispatchProgressEvent(processedFiles, totalFiles);
             }
         }
         
-        // Post-processing: Update labels for duplicate filenames
-        console.log("Starting post-processing to handle duplicate filenames...");
+        // Post-processing
         this.handleDuplicateFilenames();
-        console.log("Post-processing complete");
-        
-        // Calculate node sizes based on connections (degree)
         this.calculateNodeSizes();
+        this.calculateOverallMetrics();
         
         return {
             nodes: this.nodes,
-            links: this.links
+            links: this.links,
+            metrics: this.metrics,
+            testFiles: Array.from(this.testFiles)
         };
+    }
+    
+    /**
+     * Dispatch progress event for UI updates
+     */
+    dispatchProgressEvent(current, total) {
+        const event = new CustomEvent('parseProgress', {
+            detail: {
+                current,
+                total,
+                percentage: Math.round((current / total) * 100)
+            }
+        });
+        document.dispatchEvent(event);
     }
     
     /**
@@ -275,14 +561,11 @@ class PythonParser {
         // Track this filename and its path
         if (!this.filePathMap[filename]) {
             this.filePathMap[filename] = [];
-            console.log(`  Creating new entry in filePathMap for ${filename}`);
         }
         this.filePathMap[filename].push(filepath);
-        console.log(`  Added ${filepath} to filePathMap for ${filename}`);
         
-        // Create a node for the file using the full path as ID for uniqueness
+        // Create a node for the file
         const fileNode = this.createNode('file', filepath, filename);
-        console.log(`  Created file node with id: ${filepath}, label: ${filename}`);
         
         if (this.pyodideReady) {
             try {
@@ -293,10 +576,40 @@ class PythonParser {
                 
                 const parseResult = result.toJs();
                 
+                // Store metrics
+                if (parseResult.metrics) {
+                    this.metrics[filepath] = parseResult.metrics;
+                    fileNode.metrics = parseResult.metrics;
+                    fileNode.quality_score = parseResult.metrics.quality_score || 0;
+                    fileNode.is_test_file = parseResult.is_test_file;
+                }
+                
+                // Store docstrings
+                if (parseResult.docstrings) {
+                    this.docstrings[filepath] = parseResult.docstrings;
+                }
+                
+                // Add TODO comments as special nodes
+                if (parseResult.todo_comments && parseResult.todo_comments.length > 0) {
+                    fileNode.todo_count = parseResult.todo_comments.length;
+                    parseResult.todo_comments.forEach(todo => {
+                        const todoNode = this.createNode(
+                            'todo',
+                            `${filepath}:TODO:${todo.line}`,
+                            `${todo.type}: ${todo.message}`
+                        );
+                        todoNode.line = todo.line;
+                        todoNode.type = todo.type;
+                        this.createLink(fileNode.id, todoNode.id);
+                    });
+                }
+                
                 // Check if there was an error during parsing
                 if (parseResult.error) {
                     console.error(parseResult.error);
-                    // Fall back to regex-based parsing if AST parsing fails
+                    fileNode.has_error = true;
+                    fileNode.error = parseResult.error;
+                    // Fall back to regex-based parsing
                     this.parseWithRegex(content, fileNode, filename, filepath);
                     return;
                 }
@@ -309,20 +622,13 @@ class PythonParser {
                 
             } catch (error) {
                 console.error("Error using Pyodide for parsing:", error);
-                // Fall back to regex-based parsing if AST parsing fails
                 this.parseWithRegex(content, fileNode, filename, filepath);
             }
         } else {
-            // Fall back to regex-based parsing if Pyodide is not available
             this.parseWithRegex(content, fileNode, filename, filepath);
         }
     }
     
-    /**
-     * Parse import statements
-     * @param {string[]} lines - Lines of Python code
-     * @param {Object} fileNode - File node to link imports to
-     */
     /**
      * Process imports from AST parsing result
      * @param {Object} parseResult - Result from AST parsing
@@ -345,27 +651,20 @@ class PythonParser {
             
             // Check if this module corresponds to a Python file in the project
             if (this.pythonFiles.has(module)) {
-                // Use the file node instead of creating a module node
                 const fileName = `${module}.py`;
-                
-                // Find the file node by checking all paths for this filename
                 let foundNode = null;
                 if (this.filePathMap[fileName]) {
-                    // Use the first path found for this filename
                     const filePath = this.filePathMap[fileName][0];
                     foundNode = this.nodeMap[filePath];
                 }
-                
                 moduleNode = foundNode || this.createOrGetNode('module', module, module);
             } else {
-                // External module, create a module node
                 moduleNode = this.createOrGetNode('module', module, module);
             }
             
             this.createLink(fileNode.id, moduleNode.id);
             
             if (importName !== '*') {
-                // Create nodes for each imported item and link to module
                 const importNode = this.createOrGetNode('import', `${module}.${importName}`, importName);
                 this.createLink(moduleNode.id, importNode.id);
                 this.createLink(fileNode.id, importNode.id);
@@ -385,6 +684,13 @@ class PythonParser {
         parseResult.classes.forEach(classInfo => {
             const className = classInfo.name;
             const classNode = this.createNode('class', `${filepath}:${className}`, className);
+            classNode.complexity = classInfo.complexity || 0;
+            classNode.is_abstract = classInfo.is_abstract || false;
+            classNode.decorators = classInfo.decorators || [];
+            classNode.docstring = classInfo.docstring;
+            classNode.methods_count = classInfo.methods.length;
+            classNode.properties_count = (classInfo.properties || []).length;
+            
             this.createLink(fileNode.id, classNode.id);
             
             // Process parent classes
@@ -401,19 +707,28 @@ class PythonParser {
                     `${filepath}:${className}.${methodName}`,
                     `${className}.${methodName}`
                 );
+                
+                // Add method metadata
+                methodNode.complexity = methodInfo.complexity || 1;
+                methodNode.is_async = methodInfo.is_async || false;
+                methodNode.is_generator = methodInfo.is_generator || false;
+                methodNode.is_static = methodInfo.is_static || false;
+                methodNode.is_class_method = methodInfo.is_class_method || false;
+                methodNode.is_property = methodInfo.is_property || false;
+                methodNode.has_docstring = !!methodInfo.docstring;
+                methodNode.params = methodInfo.params || [];
+                methodNode.return_type = methodInfo.return_type;
+                
                 this.createLink(classNode.id, methodNode.id);
                 
                 // Process function calls within the method
                 methodInfo.function_calls.forEach(call => {
                     let callNode;
                     if (call.includes('.')) {
-                        // It's a method or attribute access
                         callNode = this.createOrGetNode('method', call, call);
                     } else {
-                        // It's a function
                         callNode = this.createOrGetNode('function', call, call);
                     }
-                    
                     this.createLink(methodNode.id, callNode.id);
                 });
             });
@@ -423,19 +738,26 @@ class PythonParser {
         parseResult.functions.forEach(funcInfo => {
             const funcName = funcInfo.name;
             const funcNode = this.createNode('function', `${filepath}:${funcName}`, funcName);
+            
+            // Add function metadata
+            funcNode.complexity = funcInfo.complexity || 1;
+            funcNode.is_async = funcInfo.is_async || false;
+            funcNode.is_generator = funcInfo.is_generator || false;
+            funcNode.has_docstring = !!funcInfo.docstring;
+            funcNode.params = funcInfo.params || [];
+            funcNode.return_type = funcInfo.return_type;
+            funcNode.decorators = funcInfo.decorators || [];
+            
             this.createLink(fileNode.id, funcNode.id);
             
-            // Process function calls within the function
+            // Process function calls
             funcInfo.function_calls.forEach(call => {
                 let callNode;
                 if (call.includes('.')) {
-                    // It's a method or attribute access
                     callNode = this.createOrGetNode('method', call, call);
                 } else {
-                    // It's a function
                     callNode = this.createOrGetNode('function', call, call);
                 }
-                
                 this.createLink(funcNode.id, callNode.id);
             });
         });
@@ -451,13 +773,20 @@ class PythonParser {
     parseWithRegex(content, fileNode, filename, filepath) {
         console.log(`Falling back to regex-based parsing for ${filename}`);
         
-        // Split content into lines for analysis
         const lines = content.split('\n');
         
-        // Process imports
-        this.parseImports(lines, fileNode);
+        // Basic metrics for regex parsing
+        const metrics = {
+            total_lines: lines.length,
+            lines_of_code: lines.filter(l => l.trim() && !l.trim().startsWith('#')).length,
+            lines_of_comments: lines.filter(l => l.trim().startsWith('#')).length,
+            blank_lines: lines.filter(l => !l.trim()).length
+        };
         
-        // Process classes and functions
+        this.metrics[filepath] = metrics;
+        fileNode.metrics = metrics;
+        
+        this.parseImports(lines, fileNode);
         this.parseClassesAndFunctions(lines, fileNode, filename, filepath);
     }
     
@@ -467,26 +796,22 @@ class PythonParser {
      * @param {Object} fileNode - File node to link imports to
      */
     parseImports(lines, fileNode) {
-        // Regular expressions for different import patterns
         const importRegex = /^import\s+([a-zA-Z0-9_.,\s]+)/;
         const fromImportRegex = /^from\s+([a-zA-Z0-9_.]+)\s+import\s+([a-zA-Z0-9_.,\s*]+)/;
         
         lines.forEach(line => {
             line = line.trim();
             
-            // Match simple import statements
             let match = line.match(importRegex);
             if (match) {
                 const imports = match[1].split(',').map(imp => imp.trim());
                 imports.forEach(imp => {
-                    // Create node for import and link to file
                     const importNode = this.createOrGetNode('import', imp, imp);
                     this.createLink(fileNode.id, importNode.id);
                 });
                 return;
             }
             
-            // Match from...import statements
             match = line.match(fromImportRegex);
             if (match) {
                 const module = match[1].trim();
@@ -494,22 +819,15 @@ class PythonParser {
                 
                 let moduleNode;
                 
-                // Check if this module corresponds to a Python file in the project
                 if (this.pythonFiles.has(module)) {
-                    // Use the file node instead of creating a module node
                     const fileName = `${module}.py`;
-                    
-                    // Find the file node by checking all paths for this filename
                     let foundNode = null;
                     if (this.filePathMap[fileName]) {
-                        // Use the first path found for this filename
                         const filePath = this.filePathMap[fileName][0];
                         foundNode = this.nodeMap[filePath];
                     }
-                    
                     moduleNode = foundNode || this.createOrGetNode('module', module, module);
                 } else {
-                    // External module, create a module node as before
                     moduleNode = this.createOrGetNode('module', module, module);
                 }
                 
@@ -517,7 +835,6 @@ class PythonParser {
                 
                 imports.forEach(imp => {
                     if (imp !== '*') {
-                        // Create nodes for each imported item and link to module
                         const importNode = this.createOrGetNode('import', `${module}.${imp}`, imp);
                         this.createLink(moduleNode.id, importNode.id);
                         this.createLink(fileNode.id, importNode.id);
@@ -528,7 +845,7 @@ class PythonParser {
     }
     
     /**
-     * Parse classes and functions
+     * Parse classes and functions using regex
      * @param {string[]} lines - Lines of Python code
      * @param {Object} fileNode - File node to link classes/functions to
      * @param {string} filename - Name of the file
@@ -543,14 +860,12 @@ class PythonParser {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             
-            // Match class definitions
             let match = line.match(classRegex);
             if (match) {
                 const className = match[1];
                 currentClass = this.createNode('class', `${filepath}:${className}`, className);
                 this.createLink(fileNode.id, currentClass.id);
                 
-                // If class inherits from other classes
                 if (match[2]) {
                     const parentClasses = match[2].split(',').map(cls => cls.trim());
                     parentClasses.forEach(parent => {
@@ -561,19 +876,15 @@ class PythonParser {
                 continue;
             }
             
-            // Match function definitions
             match = line.match(funcRegex);
             if (match && !line.trim().startsWith(' ')) {
                 const funcName = match[1];
                 const funcNode = this.createNode('function', `${filepath}:${funcName}`, funcName);
                 this.createLink(fileNode.id, funcNode.id);
-                
-                // Analyze function body for calls to other functions
                 this.analyzeCodeBlock(lines, i + 1, fileNode, funcNode);
                 continue;
             }
             
-            // Match class methods
             match = line.match(methodRegex);
             if (match && currentClass) {
                 const methodName = match[1];
@@ -581,8 +892,6 @@ class PythonParser {
                     `${filepath}:${currentClass.label}.${methodName}`,
                     `${currentClass.label}.${methodName}`);
                 this.createLink(currentClass.id, methodNode.id);
-                
-                // Analyze method body for calls to other functions or methods
                 this.analyzeCodeBlock(lines, i + 1, fileNode, methodNode);
             }
         }
@@ -596,7 +905,6 @@ class PythonParser {
      * @param {Object} parentNode - Function or method node
      */
     analyzeCodeBlock(lines, startLine, fileNode, parentNode) {
-        // Find indentation level of first line (to determine block boundary)
         let blockIndent = 0;
         let j = startLine;
         
@@ -608,46 +916,37 @@ class PythonParser {
             const firstLine = lines[j];
             blockIndent = firstLine.length - firstLine.trimLeft().length;
         } else {
-            return; // No code in block
+            return;
         }
         
-        // Simple regex to detect function calls
         const callRegex = /([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*)\s*\(/g;
         
-        // Go through the block and find function calls
         for (let i = startLine; i < lines.length; i++) {
             const line = lines[i];
             
-            // Check if we're still in the block
             if (line.trim() !== '' && !line.trim().startsWith('#')) {
                 const indent = line.length - line.trimLeft().length;
                 if (indent <= blockIndent) {
-                    break; // End of block
+                    break;
                 }
             }
             
-            // Find function calls
             let callMatch;
             while ((callMatch = callRegex.exec(line)) !== null) {
                 const call = callMatch[1];
                 
-                // Ignore calls to built-in functions like print, len, etc.
                 const builtins = ['print', 'len', 'str', 'int', 'float', 'list', 'dict', 'set', 'tuple', 'sum', 'min', 'max'];
                 if (builtins.includes(call)) {
                     continue;
                 }
                 
-                // Create node for the called function/method
                 let callNode;
                 if (call.includes('.')) {
-                    // It's a method or attribute access
                     callNode = this.createOrGetNode('method', call, call);
                 } else {
-                    // It's a function
                     callNode = this.createOrGetNode('function', call, call);
                 }
                 
-                // Link the calling function to the called function
                 this.createLink(parentNode.id, callNode.id);
             }
         }
@@ -665,8 +964,9 @@ class PythonParser {
             id: id,
             type: type,
             label: label,
-            size: 5, // Default size, will be updated based on connections
-            index: this.nodeIndex++
+            size: 5,
+            index: this.nodeIndex++,
+            metrics: {}
         };
         
         this.nodes.push(node);
@@ -694,12 +994,10 @@ class PythonParser {
      * @param {string} target - Target node ID
      */
     createLink(source, target) {
-        // Don't create self-links
         if (source === target) {
             return;
         }
         
-        // Check if link already exists
         const exists = this.links.some(link => 
             link.source === source && link.target === target);
             
@@ -712,10 +1010,9 @@ class PythonParser {
     }
     
     /**
-     * Calculate node sizes based on their connections (degree)
+     * Calculate node sizes based on their connections and metrics
      */
     calculateNodeSizes() {
-        // Count connections for each node
         const connections = {};
         
         this.links.forEach(link => {
@@ -723,32 +1020,45 @@ class PythonParser {
             connections[link.target] = (connections[link.target] || 0) + 1;
         });
         
-        // Update node sizes based on connections
         this.nodes.forEach(node => {
             const degree = connections[node.id] || 0;
-            // Base size + additional size based on connections
-            node.size = 5 + (degree * 2);
+            let baseSize = 5;
+            
+            // Adjust size based on node type and metrics
+            if (node.type === 'file') {
+                // Size based on lines of code
+                if (node.metrics && node.metrics.lines_of_code) {
+                    baseSize = 5 + Math.min(15, node.metrics.lines_of_code / 50);
+                }
+            } else if (node.type === 'class') {
+                // Size based on complexity and method count
+                baseSize = 7 + (node.methods_count || 0) * 0.5;
+                if (node.complexity) {
+                    baseSize += Math.min(5, node.complexity / 10);
+                }
+            } else if (node.type === 'function' || node.type === 'method') {
+                // Size based on complexity
+                if (node.complexity) {
+                    baseSize = 5 + Math.min(10, node.complexity);
+                }
+            }
+            
+            // Add connection influence
+            node.size = baseSize + (degree * 1.5);
         });
     }
     
     /**
-     * Handle duplicate filenames by updating their labels to include parent directory
-     * This ensures files with the same name in different directories are displayed distinctly
+     * Handle duplicate filenames by updating their labels
      */
     handleDuplicateFilenames() {
-        console.log("Starting duplicate filename detection...");
-        
-        // First, collect all filenames (without paths) to find duplicates
         const filenameCount = {};
         const filenameToNodes = {};
         
-        // Count occurrences of each filename and map them to their nodes
         this.nodes.forEach(node => {
-            // Only process File type nodes
             if (node.type === 'file') {
                 const filename = node.label;
                 
-                // Initialize counters and maps
                 if (!filenameCount[filename]) {
                     filenameCount[filename] = 0;
                     filenameToNodes[filename] = [];
@@ -759,40 +1069,91 @@ class PythonParser {
             }
         });
         
-        // Process duplicate filenames
         for (const [filename, count] of Object.entries(filenameCount)) {
             if (count > 1) {
-                console.log(`Found duplicate filename: ${filename} in ${count} locations`);
-                
-                // Update labels for all nodes with this filename
                 filenameToNodes[filename].forEach(node => {
-                    // Extract parent directory from the node ID (which is the full path)
                     const path = node.id;
                     let parentDir = '';
                     
-                    // Try to extract parent directory using forward slash
                     const forwardSlashParts = path.split('/');
                     if (forwardSlashParts.length > 1) {
                         parentDir = forwardSlashParts[forwardSlashParts.length - 2];
                     } else {
-                        // Try with backslash for Windows paths
                         const backslashParts = path.split('\\');
                         if (backslashParts.length > 1) {
                             parentDir = backslashParts[backslashParts.length - 2];
                         }
                     }
                     
-                    // Update the label to include parent directory
                     if (parentDir) {
-                        const oldLabel = node.label;
                         node.label = `${filename} (${parentDir})`;
-                        console.log(`  Updated label: '${oldLabel}' → '${node.label}'`);
                     }
                 });
             }
         }
+    }
+    
+    /**
+     * Calculate overall codebase metrics
+     */
+    calculateOverallMetrics() {
+        const overall = {
+            total_files: 0,
+            total_lines: 0,
+            total_code_lines: 0,
+            total_comment_lines: 0,
+            total_functions: 0,
+            total_classes: 0,
+            total_complexity: 0,
+            avg_complexity: 0,
+            max_complexity: 0,
+            total_todos: 0,
+            test_coverage_estimate: 0,
+            files_with_errors: 0,
+            quality_scores: []
+        };
         
-        console.log("Duplicate filename handling complete");
+        Object.entries(this.metrics).forEach(([filepath, metrics]) => {
+            overall.total_files++;
+            overall.total_lines += metrics.total_lines || 0;
+            overall.total_code_lines += metrics.lines_of_code || 0;
+            overall.total_comment_lines += metrics.lines_of_comments || 0;
+            overall.total_functions += metrics.function_count || 0;
+            overall.total_classes += metrics.class_count || 0;
+            overall.total_complexity += metrics.cyclomatic_complexity || 0;
+            overall.max_complexity = Math.max(overall.max_complexity, metrics.cyclomatic_complexity || 0);
+            
+            if (metrics.quality_score) {
+                overall.quality_scores.push(metrics.quality_score);
+            }
+        });
+        
+        // Calculate averages
+        if (overall.total_files > 0) {
+            overall.avg_complexity = overall.total_complexity / overall.total_functions || 0;
+            overall.avg_quality_score = overall.quality_scores.length > 0 
+                ? overall.quality_scores.reduce((a, b) => a + b, 0) / overall.quality_scores.length 
+                : 0;
+        }
+        
+        // Calculate test coverage estimate
+        const testFileCount = this.testFiles.size;
+        const regularFileCount = overall.total_files - testFileCount;
+        overall.test_coverage_estimate = regularFileCount > 0 
+            ? Math.round((testFileCount / regularFileCount) * 100) 
+            : 0;
+        
+        // Count TODOs
+        this.nodes.forEach(node => {
+            if (node.type === 'todo') {
+                overall.total_todos++;
+            }
+            if (node.has_error) {
+                overall.files_with_errors++;
+            }
+        });
+        
+        this.metrics.overall = overall;
     }
 }
 

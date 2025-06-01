@@ -6,7 +6,8 @@
     <meta name="theme-color" content="#1a1a1a">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>MilkFish Codebase</title>
+    <meta name="description" content="Advanced Python codebase visualization tool with real-time analysis, metrics dashboard, and intelligent insights">
+    <title>MilkFish Codebase Visualizer - Advanced Python Code Analysis</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a1a1a'/><path d='M50,20 L80,50 L50,80 L20,50 Z' fill='%23e83e8c'/><circle cx='50' cy='50' r='15' fill='%231a1a1a'/></svg>">
     <link rel="stylesheet" href="css/styles.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -15,183 +16,233 @@
 <body>
     <header>
         <div class="header-content">
-            <img src="logo.png" alt="MilkFish Logo" class="header-logo">
-            <h1>MilkFish Codebase</h1>
+            <img src="logo.png" alt="MilkFish Logo" class="header-logo" onerror="this.style.display='none'">
+            <h1>MilkFish Codebase Visualizer</h1>
         </div>
     </header>
     
     <main>
-        <div class="container">
-            <div class="input-section">
-                <h2>Select Python Files</h2>
-                <div class="file-inputs">
-                    <div class="file-input-container">
-                        <input type="file" id="file-input" accept=".py" multiple>
-                        <label for="file-input">Select Files</label>
+        <div class="main-wrapper">
+            <div class="top-container">
+                <!-- Input Section -->
+                <div class="input-section">
+                    <h2>Select Python Files</h2>
+                    <div class="file-inputs">
+                        <div class="file-input-container">
+                            <input type="file" id="file-input" accept=".py" multiple>
+                            <label for="file-input">
+                                <span>📄 Select Files</span>
+                            </label>
+                        </div>
+                        <div class="file-input-container">
+                            <input type="file" id="directory-input" webkitdirectory directory multiple>
+                            <label for="directory-input">
+                                <span>📁 Select Directory</span>
+                            </label>
+                        </div>
                     </div>
-                    <div class="file-input-container">
-                        <input type="file" id="directory-input" webkitdirectory directory multiple>
-                        <label for="directory-input">Select Directory</label>
-                    </div>
-                </div>
-                
-                <!-- GitHub Repository Input -->
-                <div class="github-input">
-                    <h3>Or Analyze GitHub Repository</h3>
-                    <div class="github-input-container">
-                        <input type="text" id="github-repo-url" placeholder="https://github.com/username/repository">
-                        <button id="github-fetch-btn">Clone & Analyze</button>
-                    </div>
-                    <div id="repo-info" class="repo-info" style="display: none;">
-                        <div class="repo-header">
-                            <h4 id="repo-name">Repository Name</h4>
-                            <div class="repo-stats">
-                                <span id="repo-stars">0</span> stars
-                                <span id="repo-forks">0</span> forks
+                    
+                    <!-- GitHub Repository Input -->
+                    <div class="github-input">
+                        <h3>Or Analyze GitHub Repository</h3>
+                        <div class="github-input-container">
+                            <input type="text" id="github-repo-url" 
+                                   placeholder="https://github.com/username/repository"
+                                   autocomplete="off"
+                                   spellcheck="false">
+                            <button id="github-fetch-btn">
+                                <span>🔍 Clone & Analyze</span>
+                            </button>
+                        </div>
+                        <div id="repo-info" class="repo-info" style="display: none;">
+                            <div class="repo-header">
+                                <h4 id="repo-name">Repository Name</h4>
+                                <div class="repo-stats">
+                                    <span>⭐ <span id="repo-stars">0</span></span>
+                                    <span>🔀 <span id="repo-forks">0</span></span>
+                                </div>
                             </div>
-                        </div>
-                        <p id="repo-description">Repository description</p>
-                    </div>
-                </div>
-                <div class="selection-controls">
-                    <button id="clear-selection-btn" class="secondary-btn" disabled>Clear Selection</button>
-                    <div class="file-count">
-                        <span id="python-file-count">0</span> Python files selected (<span>0.00</span>MB of 15MB)
-                    </div>
-                </div>
-                <div class="controls">
-                    <button id="analyze-btn" disabled>Analyze Codebase</button>
-                    <div id="loading-indicator" class="loading-indicator" style="display: none;">
-                        <div class="spinner"></div>
-                        <span id="loading-text">Loading repository...</span>
-                    </div>
-                </div>
-                <div id="file-list-container">
-                    <h3>Selected Files:</h3>
-                    <ul id="file-list"></ul>
-                </div>
-            </div>
-            
-            <!-- Subdirectory Selection Modal -->
-            <div id="subdirectory-modal" class="modal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Select Subdirectories to Include</h3>
-                        <span class="close-modal">&times;</span>
-                    </div>
-                    <div class="modal-body">
-                        <div class="error-message" style="display: none;"></div>
-                        <p>Your selected directory contains multiple subdirectories. Please select which ones to include in the analysis:</p>
-                        <div id="subdirectory-list" class="checkbox-list">
-                            <!-- Subdirectories will be listed here dynamically -->
-                        </div>
-                        <div class="common-ignore-section">
-                            <h4>Common directories to ignore:</h4>
-                            <button id="ignore-common-btn" class="secondary-btn">Ignore Common Directories</button>
-                            <p class="hint-text">(.venv, node_modules, __pycache__, .git, etc.)</p>
+                            <p id="repo-description">Repository description</p>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <div id="file-count-info">
-                            <span id="selected-file-count">0</span> Python files selected
+                    
+                    <!-- Selection Controls -->
+                    <div class="selection-controls">
+                        <button id="clear-selection-btn" class="secondary-btn" disabled>
+                            <span>🗑️ Clear Selection</span>
+                        </button>
+                        <div class="file-count">
+                            <span id="python-file-count">0</span> Python files selected 
+                            (<span>0.00</span>MB of 15MB)
                         </div>
-                        <div class="modal-actions">
-                            <button id="cancel-subdirectory-btn" class="secondary-btn">Cancel</button>
-                            <button id="confirm-subdirectory-btn">Confirm Selection</button>
+                    </div>
+                    
+                    <!-- Action Controls -->
+                    <div class="controls">
+                        <button id="analyze-btn" disabled>
+                            <span>🔬 Analyze Codebase</span>
+                        </button>
+                        <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                            <div class="spinner"></div>
+                            <span id="loading-text">Loading repository...</span>
                         </div>
+                    </div>
+                    
+                    <!-- File List -->
+                    <div id="file-list-container">
+                        <h3>Selected Files:</h3>
+                        <ul id="file-list">
+                            <li class="empty-message">No Python files selected</li>
+                        </ul>
                     </div>
                 </div>
-            </div>
-            
-            <div class="visualization-section">
-                <h2>Codebase Visualization</h2>
-                <div class="visualization-controls">
-                    <div class="buttons">
-                        <button id="zoom-in" title="Zoom In">+</button>
-                        <button id="zoom-out" title="Zoom Out">-</button>
-                        <button id="reset-view" title="Reset View">⟲</button>
-                    </div>
-                    <div class="export-controls">
-                        <button id="export-json" title="Export as JSON">{ }</button>
-                        <button id="export-svg" title="Export as SVG">SVG</button>
-                        <button id="export-png" title="Export as PNG">PNG</button>
-                    </div>
-                </div>
-                <div id="visualization"></div>
                 
-                <!-- Graph Legend -->
-                <div class="graph-legend">
-                    <div class="legend-item">
-                        <div class="legend-color file-color"></div>
-                        <span>File</span>
+                <!-- Visualization Section -->
+                <div class="visualization-section">
+                    <h2>Codebase Visualization</h2>
+                    <div class="visualization-controls">
+                        <div class="buttons">
+                            <button id="zoom-in" title="Zoom In (+ key)">➕</button>
+                            <button id="zoom-out" title="Zoom Out (- key)">➖</button>
+                            <button id="reset-view" title="Reset View (Ctrl+0)">🔄</button>
+                        </div>
+                        <div class="export-controls">
+                            <button id="export-json" title="Export as JSON">
+                                <span>{ }</span>
+                            </button>
+                            <button id="export-svg" title="Export as SVG">
+                                <span>SVG</span>
+                            </button>
+                            <button id="export-png" title="Export as PNG">
+                                <span>PNG</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color class-color"></div>
-                        <span>Class</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color function-color"></div>
-                        <span>Function</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color method-color"></div>
-                        <span>Method</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color import-color"></div>
-                        <span>Import</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color module-color"></div>
-                        <span>Module</span>
+                    <div id="visualization"></div>
+                    
+                    <!-- Graph Legend -->
+                    <div class="graph-legend">
+                        <div class="legend-item">
+                            <div class="legend-color file-color"></div>
+                            <span>File</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color class-color"></div>
+                            <span>Class</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color function-color"></div>
+                            <span>Function</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color method-color"></div>
+                            <span>Method</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color import-color"></div>
+                            <span>Import</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color module-color"></div>
+                            <span>Module</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: #e67e22;"></div>
+                            <span>TODO</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="details-panel">
-            <h2>Details</h2>
-            <div id="node-details">
-                <p>Click on a node to see details</p>
+            
+            <!-- Details Panel -->
+            <div class="details-panel">
+                <div class="details-panel-inner">
+                    <h2>Details</h2>
+                    <div id="node-details">
+                        <p>Click on a node to see details</p>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
+    
+    <!-- Subdirectory Selection Modal -->
+    <div id="subdirectory-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Select Subdirectories to Include</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="error-message" style="display: none;"></div>
+                <p>Your selected directory contains multiple subdirectories. Please select which ones to include in the analysis:</p>
+                <div id="subdirectory-list" class="checkbox-list">
+                    <!-- Subdirectories will be listed here dynamically -->
+                </div>
+                <div class="common-ignore-section">
+                    <h4>Quick Actions:</h4>
+                    <button id="ignore-common-btn" class="secondary-btn">
+                        <span>🚫 Ignore Common Directories</span>
+                    </button>
+                    <p class="hint-text">(.venv, node_modules, __pycache__, .git, tests, etc.)</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="file-count-info">
+                    <span id="selected-file-count">0</span> Python files selected
+                </div>
+                <div class="modal-actions">
+                    <button id="cancel-subdirectory-btn" class="secondary-btn">Cancel</button>
+                    <button id="confirm-subdirectory-btn">Confirm Selection</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <footer>
         <div class="footer-content">
-            <p>MilkFish Codebase - Created with HTML, CSS, and JavaScript</p>
+            <p>MilkFish Codebase Visualizer - Advanced Python Code Analysis Tool</p>
             <div class="personal-branding">
                 <p>Developed by <strong>Matthew Haskins</strong></p>
                 <div class="social-links">
-                    <a href="https://maloskins.pages.dev/cv" target="_blank" rel="noopener" title="Portfolio">Portfolio</a>
-                    <a href="https://github.com/MaLoskins?tab=repositories" target="_blank" rel="noopener" title="GitHub">GitHub</a>
-                    <a href="https://www.linkedin.com/in/matthew-haskins-2875a41ab/" target="_blank" rel="noopener" title="LinkedIn">LinkedIn</a>
-                    <a href="https://github.com/MaLoskins/python-codebase-visualizer" target="_blank" rel="noopener" title="Repository">Repository</a>
+                    <a href="https://maloskins.pages.dev/cv" target="_blank" rel="noopener" title="Portfolio">
+                        <span>🌐 Portfolio</span>
+                    </a>
+                    <a href="https://github.com/MaLoskins?tab=repositories" target="_blank" rel="noopener" title="GitHub">
+                        <span>💻 GitHub</span>
+                    </a>
+                    <a href="https://www.linkedin.com/in/matthew-haskins-2875a41ab/" target="_blank" rel="noopener" title="LinkedIn">
+                        <span>💼 LinkedIn</span>
+                    </a>
+                    <a href="https://github.com/MaLoskins/python-codebase-visualizer" target="_blank" rel="noopener" title="Repository">
+                        <span>📚 Repository</span>
+                    </a>
                 </div>
             </div>
         </div>
     </footer>
-    </footer>
     
+    <!-- Load Scripts -->
     <script src="js/parser.js"></script>
     <script src="js/graph.js"></script>
     <script src="js/github.js"></script>
     <script src="js/export.js"></script>
     <script src="js/main.js"></script>
     
-    <!-- Load Pyodide for AST-based Python parsing -->
+    <!-- Preload Pyodide for faster analysis -->
     <script>
         // Preload Pyodide in the background to improve user experience
         document.addEventListener('DOMContentLoaded', function() {
-            // Only load Pyodide if it's not already loaded
             if (typeof loadPyodide === 'function' && !window.pyodideLoaded) {
-                console.log("Preloading Pyodide...");
+                console.log("Preloading Pyodide for enhanced Python analysis...");
                 try {
                     loadPyodide().then(pyodide => {
-                        console.log("Pyodide preloaded successfully");
+                        console.log("Pyodide preloaded successfully - Advanced AST parsing ready");
                         window.pyodideLoaded = true;
                         window.pyodideInstance = pyodide;
                     }).catch(error => {
                         console.error("Failed to preload Pyodide:", error);
+                        console.log("Will fall back to regex-based parsing if needed");
                     });
                 } catch (error) {
                     console.error("Error preloading Pyodide:", error);
