@@ -67,6 +67,14 @@ class GraphVisualizer {
         // Minimap
         this.minimap = null;
         this.minimapScale = 0.1;
+
+        // Adjacency map for O(1) connection lookups
+        this.adjacencyMap = new Map();
+
+        // Debounce/throttle timers
+        this._searchDebounceTimer = null;
+        this._minimapThrottleTimer = null;
+        this._minimapThrottleDelay = 100;
     }
     
     /**
@@ -124,15 +132,17 @@ class GraphVisualizer {
         // Add arrow markers for directed edges
         const defs = this.svg.append('defs');
         
-        // Define arrow markers
+        // Define arrow markers - refX=0 so the tip sits exactly at the line endpoint.
+        // The ticked() function shortens lines to stop at the circle boundary,
+        // so the arrowhead appears right at the node edge.
         defs.append('marker')
             .attr('id', 'arrowhead')
             .attr('viewBox', '-0 -5 10 10')
-            .attr('refX', 20)
+            .attr('refX', 10)
             .attr('refY', 0)
             .attr('orient', 'auto')
-            .attr('markerWidth', 8)
-            .attr('markerHeight', 8)
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
             .attr('xoverflow', 'visible')
             .append('path')
             .attr('d', 'M 0,-5 L 10,0 L 0,5')
@@ -214,6 +224,12 @@ class GraphVisualizer {
         document.getElementById('zoom-in').addEventListener('click', () => this.zoomIn());
         document.getElementById('zoom-out').addEventListener('click', () => this.zoomOut());
         document.getElementById('reset-view').addEventListener('click', () => this.resetZoom());
+
+        // Fullscreen toggle
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        }
     }
     
     /**
@@ -252,6 +268,16 @@ class GraphVisualizer {
                         e.preventDefault();
                         this.resetZoom();
                     }
+                    break;
+                case 'f':
+                    if (!e.ctrlKey && !e.metaKey) {
+                        this.toggleFullscreen();
+                    }
+                    break;
+                case '?':
+                    // Trigger the help button if it exists
+                    const helpBtn = document.querySelector('.help-button');
+                    if (helpBtn) helpBtn.click();
                     break;
             }
         });
@@ -342,7 +368,11 @@ class GraphVisualizer {
         if (!this.svg) {
             this.initialize();
         }
-        
+
+        // Hide empty state when visualization loads
+        const emptyState = document.getElementById('viz-empty-state');
+        if (emptyState) emptyState.style.display = 'none';
+
         this.data = this.preprocessData(data);
         this.applyFilters();
         this.render();
@@ -399,17 +429,32 @@ class GraphVisualizer {
             }
         });
         
-        // Convert link references
-        processedData.links.forEach(link => {
-            const sourceNode = processedData.nodes.find(node => node.id === link.source);
-            const targetNode = processedData.nodes.find(node => node.id === link.target);
-            
+        // Build node lookup map for O(1) link resolution
+        const nodeMap = new Map(processedData.nodes.map(n => [n.id, n]));
+
+        // Convert link references using map instead of find
+        processedData.links = processedData.links.filter(link => {
+            const sourceNode = nodeMap.get(link.source);
+            const targetNode = nodeMap.get(link.target);
             if (sourceNode && targetNode) {
                 link.source = sourceNode;
                 link.target = targetNode;
+                return true;
             }
+            return false;
         });
-        
+
+        // Build adjacency map for O(1) connection lookups
+        this.adjacencyMap.clear();
+        processedData.links.forEach(link => {
+            const srcId = link.source.id;
+            const tgtId = link.target.id;
+            if (!this.adjacencyMap.has(srcId)) this.adjacencyMap.set(srcId, new Set());
+            if (!this.adjacencyMap.has(tgtId)) this.adjacencyMap.set(tgtId, new Set());
+            this.adjacencyMap.get(srcId).add(tgtId);
+            this.adjacencyMap.get(tgtId).add(srcId);
+        });
+
         return processedData;
     }
     
@@ -760,24 +805,51 @@ class GraphVisualizer {
      * Update positions on each simulation tick
      */
     ticked() {
+        // Update link endpoints to stop at the node boundary (circle edge)
+        // so edges always appear connected to nodes, even during movement.
         this.linkElements
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-        
+            .attr('x1', d => {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                return d.source.x + (dx / dist) * (d.source.size || 5);
+            })
+            .attr('y1', d => {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                return d.source.y + (dy / dist) * (d.source.size || 5);
+            })
+            .attr('x2', d => {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                return d.target.x - (dx / dist) * (d.target.size || 5);
+            })
+            .attr('y2', d => {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                return d.target.y - (dy / dist) * (d.target.size || 5);
+            });
+
         this.nodeElements
             .attr('cx', d => d.x)
             .attr('cy', d => d.y);
-        
+
         if (this.labelElements) {
             this.labelElements
                 .attr('x', d => d.x)
                 .attr('y', d => d.y);
         }
-        
-        // Update minimap
-        this.updateMinimap();
+
+        // Throttle minimap updates for performance
+        if (!this._minimapThrottleTimer) {
+            this._minimapThrottleTimer = setTimeout(() => {
+                this.updateMinimap();
+                this._minimapThrottleTimer = null;
+            }, this._minimapThrottleDelay);
+        }
     }
     
     /**
@@ -913,10 +985,8 @@ class GraphVisualizer {
      * Check if two nodes are connected
      */
     areNodesConnected(node1, node2) {
-        return this.filteredData.links.some(link =>
-            (link.source.id === node1.id && link.target.id === node2.id) ||
-            (link.source.id === node2.id && link.target.id === node1.id)
-        );
+        const neighbors = this.adjacencyMap.get(node1.id);
+        return neighbors ? neighbors.has(node2.id) : false;
     }
     
     /**
@@ -926,6 +996,12 @@ class GraphVisualizer {
         this.selectedNode = node;
         this.showNodeDetails(node);
         this.highlightConnections(node);
+
+        // Smooth scroll to details panel so the user can see the info
+        const detailsPanel = document.querySelector('.details-panel');
+        if (detailsPanel) {
+            detailsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
     }
     
     /**
@@ -1107,7 +1183,10 @@ class GraphVisualizer {
             const searchInput = document.getElementById('graph-search');
             const clearButton = document.getElementById('clear-search');
             
-            searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(this._searchDebounceTimer);
+                this._searchDebounceTimer = setTimeout(() => this.handleSearch(e.target.value), 200);
+            });
             clearButton.addEventListener('click', () => this.clearSearch());
         }
     }
@@ -1175,46 +1254,58 @@ class GraphVisualizer {
     }
     
     /**
-     * Setup filter controls
+     * Setup filter controls – binds click handlers to the existing legend items.
+     * Clicking a legend-item toggles that node type on/off.
+     * The "All" button selects or deselects every type.
      */
     setupFilterControls() {
-        if (!document.getElementById('node-filters')) {
-            const filterContainer = document.createElement('div');
-            filterContainer.className = 'graph-filters';
-            filterContainer.innerHTML = `
-                <h4>Node Filters</h4>
-                <div id="node-filters">
-                    ${['file', 'class', 'function', 'method', 'import', 'module', 'todo'].map(type => `
-                        <label>
-                            <input type="checkbox" value="${type}" ${this.nodeFilters.has(type) ? 'checked' : ''}>
-                            ${type.charAt(0).toUpperCase() + type.slice(1)}
-                        </label>
-                    `).join('')}
-                </div>
-            `;
-            
-            const detailsPanel = document.querySelector('.details-panel');
-            detailsPanel.appendChild(filterContainer);
-            
-            // Add event listeners
-            document.querySelectorAll('#node-filters input').forEach(checkbox => {
-                checkbox.addEventListener('change', (e) => this.handleFilterChange(e));
+        if (this._legendFiltersReady) return;
+        this._legendFiltersReady = true;
+
+        const legend = document.getElementById('graph-legend');
+        if (!legend) return;
+
+        // Sync initial active classes with nodeFilters state
+        legend.querySelectorAll('.legend-item[data-type]').forEach(item => {
+            const type = item.dataset.type;
+            item.classList.toggle('active', this.nodeFilters.has(type));
+
+            item.addEventListener('click', () => {
+                const isActive = this.nodeFilters.has(type);
+                if (isActive) {
+                    this.nodeFilters.delete(type);
+                } else {
+                    this.nodeFilters.add(type);
+                }
+                item.classList.toggle('active', !isActive);
+                this.applyFilters();
+                this.render();
+            });
+        });
+
+        // Toggle-all button
+        const toggleAllBtn = document.getElementById('legend-toggle-all');
+        if (toggleAllBtn) {
+            toggleAllBtn.addEventListener('click', () => {
+                const allTypes = ['file', 'class', 'function', 'method', 'import', 'module', 'todo'];
+                const allActive = allTypes.every(t => this.nodeFilters.has(t));
+
+                if (allActive) {
+                    // Deselect all
+                    this.nodeFilters.clear();
+                } else {
+                    // Select all
+                    allTypes.forEach(t => this.nodeFilters.add(t));
+                }
+
+                legend.querySelectorAll('.legend-item[data-type]').forEach(item => {
+                    item.classList.toggle('active', this.nodeFilters.has(item.dataset.type));
+                });
+
+                this.applyFilters();
+                this.render();
             });
         }
-    }
-    
-    /**
-     * Handle filter change
-     */
-    handleFilterChange(event) {
-        const type = event.target.value;
-        if (event.target.checked) {
-            this.nodeFilters.add(type);
-        } else {
-            this.nodeFilters.delete(type);
-        }
-        this.applyFilters();
-        this.render();
     }
     
     /**
@@ -1223,6 +1314,7 @@ class GraphVisualizer {
     setupLayoutControls() {
         if (!document.getElementById('layout-controls')) {
             const layoutContainer = document.createElement('div');
+            layoutContainer.id = 'layout-controls';
             layoutContainer.className = 'graph-layout-controls';
             layoutContainer.innerHTML = `
                 <label>Layout: 
@@ -1264,6 +1356,7 @@ class GraphVisualizer {
     setupColorControls() {
         if (!document.getElementById('color-controls')) {
             const colorContainer = document.createElement('div');
+            colorContainer.id = 'color-controls';
             colorContainer.className = 'graph-color-controls';
             colorContainer.innerHTML = `
                 <label>Color by: 
@@ -1372,6 +1465,23 @@ class GraphVisualizer {
         this.clearSelection();
     }
     
+    /**
+     * Toggle fullscreen mode for visualization
+     */
+    toggleFullscreen() {
+        const section = document.querySelector('.visualization-section');
+        const btn = document.getElementById('fullscreen-btn');
+        section.classList.toggle('fullscreen');
+        if (btn) {
+            const isFS = section.classList.contains('fullscreen');
+            btn.innerHTML = isFS
+                ? '<svg class="icon" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>'
+                : '<svg class="icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>';
+        }
+        // Re-measure and update after layout change
+        setTimeout(() => this.handleResize(), 100);
+    }
+
     /**
      * Export graph as PNG with current view
      */

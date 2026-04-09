@@ -2,6 +2,30 @@
  * Enhanced Main Application Script
  * Handles user interactions and coordinates between components
  */
+
+// Global analysis state (needed by global helper functions)
+let currentAnalysis = null;
+let analysisHistory = [];
+
+// Shared constants
+const MAX_FILE_COUNT = 300;
+const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB in bytes
+
+// Common directories to ignore (single source of truth)
+const COMMON_IGNORE_DIRS = [
+    '.venv', 'venv', 'env',
+    'node_modules',
+    '__pycache__',
+    '.git', '.github',
+    'build', 'dist',
+    '.idea', '.vscode',
+    'tests', 'test',
+    '.pytest_cache',
+    '.mypy_cache',
+    'migrations',
+    'locale'
+];
+
 document.addEventListener('DOMContentLoaded', function() {
     // Elements
     const fileInput = document.getElementById('file-input');
@@ -10,34 +34,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearSelectionBtn = document.getElementById('clear-selection-btn');
     const fileList = document.getElementById('file-list');
     const pythonFileCount = document.getElementById('python-file-count');
-    
+
     // Files storage
     let selectedFiles = [];
     let allFiles = new Map();
     let subdirectories = [];
     let selectedSubdirectories = [];
-    const MAX_FILE_COUNT = 300;
-    const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB in bytes
     let totalFileSize = 0;
-    
-    // Analysis state
-    let currentAnalysis = null;
-    let analysisHistory = [];
-    
-    // Common directories to ignore
-    const COMMON_IGNORE_DIRS = [
-        '.venv', 'venv', 'env',
-        'node_modules',
-        '__pycache__',
-        '.git', '.github',
-        'build', 'dist',
-        '.idea', '.vscode',
-        'tests', 'test',
-        '.pytest_cache',
-        '.mypy_cache',
-        'migrations',
-        'locale'
-    ];
     
     // Initialize the graph visualizer
     graphVisualizer.initialize();
@@ -522,7 +525,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="shortcut">
                             <kbd>Esc</kbd>
-                            <span>Clear selection</span>
+                            <span>Clear selection / Close modal</span>
+                        </div>
+                        <div class="shortcut">
+                            <kbd>F</kbd>
+                            <span>Toggle fullscreen</span>
+                        </div>
+                        <div class="shortcut">
+                            <kbd>?</kbd>
+                            <span>Show this help</span>
                         </div>
                     </div>
                 </div>
@@ -1045,27 +1056,25 @@ document.addEventListener('DOMContentLoaded', function() {
             dirHeader.appendChild(dirTitle);
             dirHeader.appendChild(removeBtn);
             dirLi.appendChild(dirHeader);
-            
-            fileList.appendChild(dirLi);
-            
+
             const fileUl = document.createElement('ul');
             fileUl.className = 'file-sublist';
-            
+
             filesByDir[dir].sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
                 const fileLi = document.createElement('li');
                 fileLi.className = 'file-item';
-                
+
                 const fileItem = document.createElement('div');
                 fileItem.className = 'file-item-content';
-                
+
                 const fileName = document.createElement('span');
                 fileName.textContent = file.name;
-                
+
                 const fileSizeMB = (file.file.size / (1024 * 1024)).toFixed(2);
                 const fileInfo = document.createElement('span');
                 fileInfo.className = 'file-info';
                 fileInfo.textContent = `${fileSizeMB}MB`;
-                
+
                 const removeFileBtn = document.createElement('button');
                 removeFileBtn.className = 'remove-btn small';
                 removeFileBtn.textContent = '×';
@@ -1073,16 +1082,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 removeFileBtn.addEventListener('click', function() {
                     removeFile(file.path);
                 });
-                
+
                 fileItem.appendChild(fileName);
                 fileItem.appendChild(fileInfo);
                 fileItem.appendChild(removeFileBtn);
                 fileLi.appendChild(fileItem);
-                
+
                 fileUl.appendChild(fileLi);
             });
-            
-            fileList.appendChild(fileUl);
+
+            dirLi.appendChild(fileUl);
+            fileList.appendChild(dirLi);
         });
     }
     
@@ -1153,12 +1163,16 @@ document.addEventListener('DOMContentLoaded', function() {
         showNotification(`Removed ${filesToRemove.length} files (${(sizeToRemove / (1024 * 1024)).toFixed(2)}MB) from selection.`);
     }
     
+    // Expose functions needed by global helpers (loadSampleCode, setupDragAndDrop, etc.)
+    window.clearFileSelection = clearFileSelection;
+    window.addFilesToCollection = addFilesToCollection;
+
     // Add demo functionality
     setupDemoButton();
-    
+
     // Set up GitHub repository integration
     setupGitHubIntegration();
-    
+
     // Set up drag and drop
     setupDragAndDrop();
 });
@@ -1245,7 +1259,15 @@ function setupGitHubIntegration() {
             }
         }, 100);
     });
-    
+
+    // Allow Enter key to trigger fetch
+    githubRepoUrl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            githubFetchBtn.click();
+        }
+    });
+
     githubFetchBtn.addEventListener('click', async function() {
         const url = githubRepoUrl.value.trim();
         
@@ -1275,10 +1297,7 @@ function setupGitHubIntegration() {
             }
             
             document.getElementById('clear-selection-btn').disabled = true;
-            
-            const MAX_FILE_COUNT = 300;
-            const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB in bytes
-            
+
             const result = await githubIntegration.processRepository(url, MAX_FILE_COUNT, MAX_TOTAL_SIZE);
             
             displayRepositoryInfo(result.metadata, repoName, repoStars, repoForks, repoDescription, repoInfo);
@@ -1366,16 +1385,6 @@ function showGitHubSubdirectoryModal(subdirectories, loadingIndicator) {
     };
     
     ignoreCommonBtn.onclick = function() {
-        const COMMON_IGNORE_DIRS = [
-            '.venv', 'venv', 'env',
-            'node_modules',
-            '__pycache__',
-            '.git', '.github',
-            'build', 'dist',
-            '.idea', '.vscode',
-            'tests', 'test'
-        ];
-        
         const checkboxes = subdirList.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(checkbox => {
             if (COMMON_IGNORE_DIRS.some(ignoreDir =>
@@ -1403,9 +1412,6 @@ function showGitHubSubdirectoryModal(subdirectories, loadingIndicator) {
         loadingIndicator.style.display = 'flex';
         
         try {
-            const MAX_FILE_COUNT = 300;
-            const MAX_TOTAL_SIZE = 15 * 1024 * 1024;
-            
             await githubIntegration.processSelectedDirectories(selectedDirs, MAX_FILE_COUNT, MAX_TOTAL_SIZE);
             await processGitHubFiles(loadingIndicator);
             
@@ -2751,33 +2757,62 @@ function generateDetailedMetricsHTML(metrics) {
 }
 
 /**
- * Display a notification message
+ * Display a notification message (supports stacking)
  */
 function showNotification(message, isError = false) {
-    let notification = document.querySelector('.notification');
-    
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.className = 'notification';
-        document.body.appendChild(notification);
+    // Ensure notification container exists
+    let container = document.querySelector('.notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'notification-container';
+        document.body.appendChild(container);
     }
-    
-    notification.textContent = message;
+
+    const notification = document.createElement('div');
     notification.className = isError ? 'notification error' : 'notification';
-    
-    notification.style.display = 'block';
-    notification.style.opacity = '1';
-    
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => {
-            notification.style.display = 'none';
-        }, 500);
-    }, isError ? 5000 : 3000);
+    notification.innerHTML = `<span>${message}</span><button class="notification-close" aria-label="Dismiss">&times;</button>`;
+
+    container.appendChild(notification);
+
+    // Trigger slide-in animation
+    requestAnimationFrame(() => notification.classList.add('show'));
+
+    const dismiss = () => {
+        notification.classList.remove('show');
+        notification.classList.add('hide');
+        setTimeout(() => notification.remove(), 400);
+    };
+
+    notification.querySelector('.notification-close').addEventListener('click', dismiss);
+
+    // Auto-dismiss
+    setTimeout(dismiss, isError ? 5000 : 3000);
+
+    // Limit visible notifications to 4
+    const notifications = container.querySelectorAll('.notification');
+    if (notifications.length > 4) {
+        notifications[0].remove();
+    }
 }
 
 // Add enhanced notification styles
 addEnhancedStyles();
+
+// Global modal management: close on backdrop click and Escape key
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal')) {
+        e.target.style.display = 'none';
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const openModals = document.querySelectorAll('.modal[style*="display: block"]');
+        openModals.forEach(modal => modal.style.display = 'none');
+        // Also remove dynamically created modals (insights, keyboard shortcuts, etc.)
+        document.querySelectorAll('.modal.insights-modal, .modal.metrics-modal').forEach(modal => modal.remove());
+    }
+});
 
 /**
  * Add enhanced CSS styles
@@ -2829,51 +2864,65 @@ function addEnhancedStyles() {
         
         /* Metrics Dashboard */
         .metrics-dashboard {
-            margin-top: 20px;
-            padding: 20px;
+            margin-top: 16px;
+            padding: 16px;
             background: var(--darker-bg);
             border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
         }
-        
+
+        .metrics-dashboard h3 {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
         }
-        
+
         .metric-card {
             background: var(--card-bg);
-            padding: 15px;
-            border-radius: var(--radius-sm);
+            padding: 12px 10px;
+            border-radius: var(--radius-md);
             text-align: center;
             border: 1px solid var(--border-color);
         }
-        
+
         .metric-value {
-            font-size: 24px;
+            font-size: 1.3rem;
             font-weight: bold;
             color: var(--magenta-primary);
         }
-        
+
         .metric-label {
-            font-size: 12px;
+            font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-top: 5px;
+            margin-top: 4px;
         }
-        
+
         .health-indicators {
-            margin-top: 20px;
+            margin-top: 16px;
         }
-        
+
+        .health-indicators h4 {
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+
         .health-item {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
-        
+
         .health-label {
             display: inline-block;
             width: 150px;
             color: var(--text-secondary);
+            font-size: 0.8rem;
         }
         
         .health-value {
@@ -2903,26 +2952,70 @@ function addEnhancedStyles() {
         .health-fill.good { background: var(--function-color); }
         .health-fill.warning { background: var(--import-color); }
         .health-fill.danger { background: var(--class-color); }
+
+        .todo-summary,
+        .error-summary {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--import-color);
+            background: rgba(243, 156, 18, 0.08);
+        }
+
+        .error-summary {
+            border-left-color: var(--class-color);
+            background: rgba(231, 76, 60, 0.08);
+        }
+
+        .todo-summary h4,
+        .error-summary h4 {
+            font-size: 0.85rem;
+            margin: 0 0 4px;
+            border: none;
+            padding: 0;
+        }
+
+        .todo-summary p,
+        .error-summary p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .metrics-actions {
+            margin-top: 14px;
+            display: flex;
+            gap: 8px;
+        }
         
         /* Analysis History */
         .analysis-history {
-            margin-top: 20px;
-            padding: 15px;
+            margin-top: 16px;
+            padding: 14px;
             background: var(--darker-bg);
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
         }
-        
+
+        .analysis-history h4 {
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
         .history-list {
-            margin-top: 10px;
+            margin-top: 8px;
         }
-        
+
         .history-item {
-            padding: 10px;
-            margin-bottom: 5px;
+            padding: 10px 12px;
+            margin-bottom: 4px;
             background: var(--card-bg);
             border-radius: var(--radius-sm);
             cursor: pointer;
             transition: all var(--transition-fast);
+            border: 1px solid var(--border-color);
         }
         
         .history-item:hover {
@@ -2943,17 +3036,18 @@ function addEnhancedStyles() {
         /* Search Container */
         .graph-search-container {
             position: relative;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
-        
+
         #graph-search {
             width: 100%;
-            padding: 10px 40px 10px 15px;
+            padding: 8px 40px 8px 14px;
             background: var(--darker-bg);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-md);
             color: var(--text-color);
-            font-size: 14px;
+            font-size: 0.875rem;
+            height: 38px;
         }
         
         #graph-search:focus {
@@ -2982,48 +3076,28 @@ function addEnhancedStyles() {
             display: none;
         }
         
-        /* Graph Filters */
-        .graph-filters {
-            margin-top: 20px;
-            padding: 15px;
-            background: var(--darker-bg);
-            border-radius: var(--radius-sm);
-        }
-        
-        #node-filters {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
-        #node-filters label {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            color: var(--text-color);
-            font-size: 14px;
-        }
-        
-        #node-filters input[type="checkbox"] {
-            margin-right: 8px;
-            cursor: pointer;
-        }
-        
         /* Layout Controls */
         .graph-layout-controls,
         .graph-color-controls {
-            margin-left: 10px;
+            margin-left: 8px;
+            font-size: 0.8rem;
         }
-        
+
+        .graph-layout-controls label,
+        .graph-color-controls label {
+            color: var(--text-secondary);
+        }
+
         .graph-layout-controls select,
         .graph-color-controls select {
-            padding: 5px 10px;
+            padding: 4px 8px;
             background: var(--darker-bg);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-sm);
             color: var(--text-color);
             cursor: pointer;
+            font-size: 0.8rem;
+            height: 30px;
         }
         
         /* Insights Modal */
@@ -3117,27 +3191,6 @@ function addEnhancedStyles() {
         }
         
         /* Enhanced File List */
-        .file-info {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-left: 10px;
-        }
-        
-        .dir-info {
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-        
-        .toggle-btn {
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 12px;
-            padding: 0 5px;
-            margin-right: 5px;
-        }
-        
         .file-count.warning {
             color: var(--import-color);
         }
@@ -3200,13 +3253,6 @@ function addEnhancedStyles() {
             margin-top: 3px;
         }
         
-        /* Pulse animation for buttons */
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-        
         .pulse {
             animation: pulse 0.5s ease-in-out;
         }
@@ -3223,44 +3269,6 @@ function addEnhancedStyles() {
             overflow-y: auto;
         }
         
-        /* Empty message */
-        .empty-message {
-            text-align: center;
-            color: var(--text-secondary);
-            font-style: italic;
-            padding: 20px;
-        }
-        
-        /* Enhanced notification */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 25px;
-            background-color: var(--magenta-primary);
-            color: white;
-            border-radius: var(--radius-sm);
-            z-index: 1000;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 20px rgba(232, 62, 140, 0.3);
-            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            font-weight: 500;
-            transform: translateY(-10px);
-            opacity: 0;
-            animation: notificationEnter 0.5s forwards;
-            max-width: 400px;
-        }
-        
-        @keyframes notificationEnter {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .notification.error {
-            background-color: #e74c3c;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 20px rgba(231, 76, 60, 0.3);
-        }
         
         /* Minimap */
         .minimap-container {

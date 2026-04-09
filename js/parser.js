@@ -772,20 +772,90 @@ class PythonParser {
      */
     parseWithRegex(content, fileNode, filename, filepath) {
         console.log(`Falling back to regex-based parsing for ${filename}`);
-        
+
         const lines = content.split('\n');
-        
-        // Basic metrics for regex parsing
+        const codeLines = lines.filter(l => l.trim() && !l.trim().startsWith('#'));
+        const commentLines = lines.filter(l => l.trim().startsWith('#'));
+
+        // Count classes, functions, and basic complexity via regex
+        const classRegex = /^class\s+[a-zA-Z0-9_]+/;
+        const funcRegex = /^def\s+[a-zA-Z0-9_]+/;
+        const methodRegex = /^\s+def\s+[a-zA-Z0-9_]+/;
+        const branchRegex = /^\s*(if |elif |for |while |except |with |and |or )/;
+        const docstringRegex = /^\s*("""|''')/;
+        const todoRegex = /^\s*#\s*(TODO|FIXME|HACK|XXX)\b/i;
+
+        let classCount = 0;
+        let functionCount = 0;
+        let methodCount = 0;
+        let complexity = 1; // base complexity
+        let hasDocstrings = false;
+        let typeAnnotations = 0;
+        let todoCount = 0;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (classRegex.test(trimmed)) classCount++;
+            if (funcRegex.test(trimmed)) functionCount++;
+            if (methodRegex.test(line) && !funcRegex.test(trimmed)) methodCount++;
+            if (branchRegex.test(line)) complexity++;
+            if (docstringRegex.test(line)) hasDocstrings = true;
+            if (/->/.test(line) || /:\s*(str|int|float|bool|list|dict|Optional|List|Dict|Any|Tuple)\b/.test(line)) typeAnnotations++;
+            if (todoRegex.test(line)) todoCount++;
+        }
+
+        // Compute a quality score (same heuristic as the Pyodide analyzer)
+        let qualityScore = 50; // base
+        if (hasDocstrings) qualityScore += 15;
+        if (typeAnnotations > 0) qualityScore += 10;
+        if (complexity <= 5) qualityScore += 10;
+        else if (complexity > 15) qualityScore -= 15;
+        if (commentLines.length / (codeLines.length || 1) > 0.1) qualityScore += 5;
+        const docRatio = (classCount + functionCount + methodCount) > 0 ? 1 : 0;
+        qualityScore += docRatio * 10;
+        qualityScore = Math.max(0, Math.min(100, qualityScore));
+
+        const isTestFile = /test_|_test\.py$|tests\.py$/.test(filename);
+        if (isTestFile) this.testFiles.add(filepath);
+
         const metrics = {
             total_lines: lines.length,
-            lines_of_code: lines.filter(l => l.trim() && !l.trim().startsWith('#')).length,
-            lines_of_comments: lines.filter(l => l.trim().startsWith('#')).length,
-            blank_lines: lines.filter(l => !l.trim()).length
+            lines_of_code: codeLines.length,
+            lines_of_comments: commentLines.length,
+            blank_lines: lines.filter(l => !l.trim()).length,
+            function_count: functionCount + methodCount,
+            class_count: classCount,
+            cyclomatic_complexity: complexity,
+            quality_score: qualityScore,
+            type_annotations: typeAnnotations,
+            has_docstrings: hasDocstrings,
+            todo_count: todoCount
         };
-        
+
         this.metrics[filepath] = metrics;
         fileNode.metrics = metrics;
-        
+        fileNode.quality_score = qualityScore;
+        fileNode.is_test_file = isTestFile;
+
+        // Create TODO nodes
+        if (todoCount > 0) {
+            fileNode.todo_count = todoCount;
+            let todoLine = 0;
+            for (let i = 0; i < lines.length; i++) {
+                const m = lines[i].match(todoRegex);
+                if (m) {
+                    todoLine++;
+                    const todoNode = this.createNode(
+                        'todo',
+                        `${filepath}:TODO:${i + 1}`,
+                        `${m[1]}: ${lines[i].trim().replace(/^#\s*/, '')}`
+                    );
+                    todoNode.line = i + 1;
+                    this.createLink(fileNode.id, todoNode.id);
+                }
+            }
+        }
+
         this.parseImports(lines, fileNode);
         this.parseClassesAndFunctions(lines, fileNode, filename, filepath);
     }
